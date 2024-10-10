@@ -1,0 +1,17 @@
+affine
+cdsapi
+geopandas
+matplotlib
+numpy
+omegaconf
+panda
+python_dateutil
+PyYAML
+rasterio
+Requests
+rioxarray
+Shapely
+soilgrids
+tqdm
+widgetsnbextension
+xarray
