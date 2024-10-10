@@ -159,21 +159,21 @@ def donwload_mlt_data_from_agera5(
                     "statistic": [""] if statistic is None else statistic}
     
     ## create queryies per month
-    if len(years)<10:
-        for year in years:
-            download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
-    else:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-            future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
-        
-        for future in concurrent.futures.as_completed(future_to_year):
-            year = future_to_year[future]
-            try:
-                    file_path = future.result()
-                    print(f"Requested Year {year}")
-                    print(f"downloaded in {file_path}")
-            except Exception as exc:
-                    print(f"Request for year {year} generated an exception: {exc}")
+    #if len(years)<10:
+    #    for year in years:
+    #        download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
+    #else:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
+    
+    for future in concurrent.futures.as_completed(future_to_year):
+        year = future_to_year[future]
+        try:
+                file_path = future.result()
+                print(f"Requested Year {year}")
+                print(f"downloaded in {file_path}")
+        except Exception as exc:
+                print(f"Request for year {year} generated an exception: {exc}")
 
 
     

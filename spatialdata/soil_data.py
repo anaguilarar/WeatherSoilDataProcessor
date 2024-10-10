@@ -191,7 +191,7 @@ class SoilGridDataDonwload():
         self.output_folder = output_folder
 
         if not os.path.exists(output_folder):
-            os.mkdir(output_folder)
+            os.makedirs(output_folder)
 
     def download_soilgrid(self, boundaries):
         x1, y1, x2, y2 = boundaries

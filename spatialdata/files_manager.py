@@ -102,7 +102,10 @@ def create_yearly_query(init_date, end_date):
                 month_days = set_months_and_days(year=year, init_month=1, end_month=12, init_day = None)
 
             queryyearlydates[str(year)] =  {i: month_days[i] for i in month_days.keys()}
-
+    else:
+        month_days = set_months_and_days(year=sty, init_day=std, init_month=stm, end_month=enm, end_day=end)
+        queryyearlydates[str(sty)] =  {i: month_days[i] for i in month_days.keys()}
+        
     return queryyearlydates
 
 class IntervalFolderManager:
