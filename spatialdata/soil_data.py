@@ -240,6 +240,7 @@ class SoilDataCube(DataCubeBase):
         data= []
         for d, v in tqdm.tqdm(xr_dict.items()):
             df = v.to_dataframe()
+            df['depth'] = d
             data.append(df)
             
         return pd.concat(data)  
