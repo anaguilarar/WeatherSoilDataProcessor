@@ -1,0 +1,37 @@
+DATES:
+  starting_date: "2001-01-01"
+  ending_date: "2003-08-31"
+
+WEATHER:
+  variables:
+    precipitation:
+      mission: chirps
+      source: chips
+
+    solar_radiation: 
+      mission: agera5
+      source: agera5
+
+    temperature_tmax:
+      mission: agera5
+      source: agera5
+
+    temperature_tmin:
+      mission: agera5
+      source: agera5
+
+SPATIAL_INFO:
+  spatial_file: 'data/country.shp'
+  spatial_sub_file: 'data/tb_limitealdeas.shp'
+  extent: [-80,  12, -90, 17]
+
+GENERAL:
+  suffix: 'hnd'
+
+  task: download
+
+PATHS:
+
+  input_path: "weather/"
+  output_path: "weather/"
+
