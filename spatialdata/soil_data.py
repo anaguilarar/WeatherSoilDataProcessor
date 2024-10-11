@@ -7,7 +7,7 @@ from soilgrids import SoilGrids
 import geopandas as gpd
 import rasterio
 from rasterio.windows import from_bounds
-
+from .gis_functions import add_2dlayer_toxarrayr
 import os
 import pandas as pd
 
@@ -116,18 +116,22 @@ def find_soil_textural_class_in_nparray(sand,clay):
     silt = 100 - sand - clay
     silt[silt==100] = 0
 
-    cond1 = silt + 1.5*clay < 15
-    cond2 = np.logical_and(silt + 1.5*clay >= 15, silt + 2*clay < 30)
-    cond3 = np.logical_or(np.logical_and(np.logical_and(clay >= 7, clay < 20), np.logical_and(sand > 52, silt + 2*clay >= 30)),np.logical_and(clay < 7, silt < 50, silt + 2*clay >= 30))
-    cond4 = np.logical_and(np.logical_and(clay >= 7,clay < 27,silt >= 28),np.logical_and(silt < 50, sand <= 52))
-    cond5 = np.logical_or(np.logical_and(silt >= 50, clay >= 12, clay < 27), np.logical_and(silt >= 50, silt < 80, clay < 12))
-    cond6 = np.logical_and(silt >= 80, clay < 12)
-    cond7 = np.logical_and(np.logical_and(clay >= 20, clay < 35), np.logical_and(silt < 28, sand > 45))
-    cond8 = np.logical_and(np.logical_and(clay >= 27, clay < 40), np.logical_and(sand > 20, sand <= 45))
-    cond9 = np.logical_and(clay >= 27, clay < 40, sand <= 20)
-    cond10 = np.logical_and(clay >= 35, sand > 45)
-    cond11 = np.logical_and(clay >= 40, silt >= 40)
-    cond12 = np.logical_and(clay >= 40, sand <= 45, silt < 40)
+    ## sands
+
+
+    cond1 = (sand>=85) & ((silt + clay*1.5) < 15 )
+    cond2 = np.logical_and(np.logical_and(sand>70, sand<91),np.logical_and((silt + 1.5*clay) >= 15, (silt + 2*clay) < 30))
+    cond3 = np.logical_or(np.logical_and(np.logical_and(clay >= 7, clay < 20), np.logical_and(sand > 52, (silt + 2*clay) >= 30)),np.logical_and(clay < 7, silt < 50, sand>43))
+    cond4 = np.logical_and(np.logical_and(clay >= 7,clay < 27),np.logical_and(silt >= 28,silt < 50), sand <= 52)
+    cond5 = ((silt >= 50) & (clay >= 12) & (clay < 27)) | ((silt >= 50) & (silt < 80) & (clay < 12))
+    cond6 = (silt >= 80) & (clay < 12)
+    cond7 = (clay >= 20) & (clay < 35) & (silt < 28) & (sand> 45)
+    cond8 = (clay >= 27) & (clay < 40) & (sand > 20) & (sand <= 45)
+    cond9 = (clay >= 27) & (clay < 40) & (sand <= 20)
+
+    cond10 = (clay >= 35) & (sand > 45)
+    cond11 = (clay >= 40) & (silt >= 40)
+    cond12 = (clay >= 40) & (sand <= 45) & (silt < 40)
 
     texts = np.zeros(clay.shape, dtype=int)
     texts[clay == 0] = -1
@@ -251,15 +255,25 @@ class SoilDataCube(DataCubeBase):
         xrdate[dim_name] = [dim_value]
         return xrdate
     
+    @staticmethod
+    def calculate_texture_map(xrdata):
+        sand = xrdata.sand.values
+        clay = xrdata.clay.values
+    
+        texturemap = find_soil_textural_class_in_nparray(sand, clay).astype(float)
+        texturemap[texturemap == 0] = np.nan
+        return add_2dlayer_toxarrayr(texturemap, xrdata.copy(), variable_name='texture')
+
+
     def get_depth_paths(self):
         query_paths = self.folder_manager.get_all_paths(by='depth')
         return query_paths
 
-    def multi_depth_data(self, reference_variable = 'wv0033', verbose = False):
+    def multi_depth_data(self, reference_variable = 'wv0033', verbose = False, target_crs = None):
         self.xr_dict = {}
         for k,v in tqdm.tqdm(self._query_paths.items()):
             print(v)
-            self.xr_dict[k] = self.stack_mlt_data(v, reference_variable= reference_variable, verbose = verbose)
+            self.xr_dict[k] = self.stack_mlt_data(v, reference_variable= reference_variable, verbose = verbose, target_crs = target_crs)
         return self.xr_dict
 
     def __init__(self,folder_manager, extent=None) -> None:

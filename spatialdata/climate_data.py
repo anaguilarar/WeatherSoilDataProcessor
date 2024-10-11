@@ -487,12 +487,12 @@ class MLTWeatherDataCube(DataCubeBase):
 
         return self.available_dates[variable], self.available_files[variable]
     
-    def multitemporal_data(self, reference_variable = 'precipitation'):
+    def multitemporal_data(self, reference_variable = 'precipitation', target_crs = None):
         xr_dict = {}
         for d in tqdm.tqdm(self._query_dates.keys()):
 
             dir_single_date_path = self.query_date(d)
-            xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable)
+            xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, target_crs =target_crs)
             #dval = datetime.strptime(d, '%Y%m%d') 
             #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
             xr_dict[d] = xrsingledate
@@ -501,27 +501,29 @@ class MLTWeatherDataCube(DataCubeBase):
     
     
     @staticmethod
-    def mask_mldata(xr_dict,geometry, clip = True, ncores = 10):
-        
-        xrdict_masked = {}    
-        #for d, v in tqdm.tqdm(xr_dict.items()):
-        #    xrdict_masked[d] = DataCubeBase.mask_using_geometry(v,geometry, clip = clip)
+    def mask_mldata(xr_dict,geometry, clip = True, ncores = 0):
+        if ncores == 0:
+            xrdict_masked = {}    
+            for d, v in tqdm.tqdm(xr_dict.items()):
+                xrdict_masked[d] = DataCubeBase.mask_using_geometry(v,geometry, clip = clip)
         #ncores = 10
-        xrdict_masked = {}
-        with tqdm.tqdm(total=len(list(xr_dict.keys()))) as pbar:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
-                
-                future_to_day ={executor.submit(DataCubeBase.mask_using_geometry, v,geometry, clip): (d) for d, v in xr_dict.items()}
+        else:
 
-                for future in concurrent.futures.as_completed(future_to_day):
-                    date = future_to_day[future]
-                    try:
-                            rs = future.result()
-                            xrdict_masked[date] = rs
-                    except Exception as exc:
-                            print(f"Request for year {date} generated an exception: {exc}")
-                    pbar.update(1)
-                        
+            xrdict_masked = {}
+            with tqdm.tqdm(total=len(list(xr_dict.keys()))) as pbar:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
+                    
+                    future_to_day ={executor.submit(DataCubeBase.mask_using_geometry, v,geometry, clip): (d) for d, v in xr_dict.items()}
+
+                    for future in concurrent.futures.as_completed(future_to_day):
+                        date = future_to_day[future]
+                        try:
+                                rs = future.result()
+                                xrdict_masked[date] = rs
+                        except Exception as exc:
+                                print(f"Request for year {date} generated an exception: {exc}")
+                        pbar.update(1)
+                            
 
         mlist = list(xrdict_masked.keys())
         mskedsorted = {}

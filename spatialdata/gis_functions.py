@@ -1,5 +1,6 @@
 from typing import List
-
+from rasterio.warp import reproject
+from rasterio.enums import Resampling
 import shapely
 from shapely.geometry import Polygon
 import xarray
@@ -12,6 +13,58 @@ from shapely.geometry import mapping
 import geopandas as gpd
 import os
 import math
+from rasterio.transform import from_bounds
+
+import xarray
+import numpy as np
+
+def add_2dlayer_toxarrayr(imageasarray, xarraydata: xarray.Dataset, variable_name: str) -> xarray.Dataset:
+    """
+    Add a 2D layer to an existing xarray dataset.
+
+    Parameters:
+    -----------
+    image_as_array : np.ndarray, optional
+        Image data as a numpy array. Either `fn` or `image_as_array` must be provided.
+
+    xarraydata : xarray.Dataset
+        Existing xarray dataset.
+    variable_name : str
+        Name of the variable to be added.
+
+    Returns:
+    --------
+    xarray.Dataset
+        Updated xarray dataset with the added 2D layer.
+    """
+    #dimsnames = list(xarraydata.sizes.keys())
+    #sizexarray = [dict(xarraydata.sizes)[i] for i in dict(xarraydata.sizes)]
+    refdimnames = xarraydata.sizes
+
+    
+    assert len(imageasarray.shape) < 3
+        
+    xrimg = xarray.DataArray(imageasarray)    
+        #y_index =[i for i in range(len(sizexarray)) if xrimg.shape[1] == sizexarray[i]][0]
+        #x_index = 0 if y_index == 1 else 1
+    newdims = {}
+    for keyval in xrimg.sizes:
+        xrimg.sizes[keyval]
+        posdims = [j for j,keyvalref in enumerate(
+            refdimnames.keys()) if xrimg.sizes[keyval] == refdimnames[keyvalref]]
+        newdims[keyval] = posdims
+    # check double same axis sizes
+    if len(newdims[list(newdims.keys())[1]]) >1:
+        newdims[list(newdims.keys())[1]] = list(refdimnames.keys())[1]
+        newdims[list(newdims.keys())[0]] = list(refdimnames.keys())[0]
+    else:
+        newdims[list(newdims.keys())[1]] = list(refdimnames.keys())[newdims[list(newdims.keys())[1]][0]]
+        newdims[list(newdims.keys())[0]] = list(refdimnames.keys())[newdims[list(newdims.keys())[0]][0]]
+
+    xrimg.name = variable_name
+    xrimg = xrimg.rename(newdims)
+    
+    return xarray.merge([xarraydata, xrimg])
 
 class SpatialBoundaries:
     def __init__(self, sp_vector) -> None:
@@ -29,6 +82,110 @@ class SpatialBoundaries:
     def extent(self):
         l, b, r, t = from_polygon_2bbox(self.vector_geometry)
         return l, b, r, t
+
+def get_transform_fromxy(x: np.ndarray, 
+                     y: np.ndarray):
+    height = len(y)
+    width = len(y)
+
+    transform = from_bounds(np.sort(x)[0], np.sort(y)[0], np.sort(x)[-1], np.sort(y)[-1], width, height)
+    
+    return transform
+
+def get_new_coords_for_newshape(oldx, oldy, newheight,newidth):
+    """
+    Generate new x, y coordinates and an affine transform for a raster with a new shape.
+
+    Parameters
+    ----------
+    oldx : np.ndarray
+        1D array of old x coordinates (pixel centers).
+    oldy : np.ndarray
+        1D array of old y coordinates (pixel centers).
+    newheight : int
+        New number of rows (height) for the resampled raster.
+    newwidth : int
+        New number of columns (width) for the resampled raster.
+
+    Returns
+    -------
+    Tuple[(np.ndarray, np.ndarray), Affine]
+        A tuple containing the new x, y coordinates and the affine transform.
+    """
+
+    sprx = abs(oldx[0]-oldx[1])
+    spry = abs(oldy[0]-oldy[1])
+
+    xmin = oldx[0] - sprx/2 if oldx[0]<oldx[1] else oldx[-1]-sprx/2
+    ymin = oldy[0] - spry/2 if oldy[0]<oldy[1] else oldy[-1]-spry/2
+
+    xmax = oldx[-1] + sprx/2 if oldx[0]<oldx[1] else oldx[0]+sprx/2
+    ymax = oldy[-1] + spry/2 if oldy[0]<oldy[1] else oldy[0]+spry/2
+
+    newspx = (xmax-xmin)/newidth
+    newspy = (ymax-ymin)/newheight
+    
+    newx = np.linspace(xmin+(newspx/2),xmax-(newspx/2), newidth)
+    newy = np.linspace(ymin+(newspy/2),ymax-(newspy/2), newheight)
+    # Ensure correct ordering of coordinates
+    newx = newx if oldx[0] < oldx[1] else newx[::-1]
+    newy = newy if oldy[0] < oldy[1] else newy[::-1]
+    
+    new_transform = get_transform_fromxy(newx, newy)
+
+    return [(newx, newy), new_transform]
+
+def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
+    """
+    Reproject xarray data to a new coordinate reference system (CRS).
+
+    Parameters
+    ----------
+    xrsource : xarray.Dataset
+        The xarray dataset to reproject.
+    target_crs : str
+        The target CRS (e.g., 'EPSG:4326').
+    xdim_name : str, optional
+        Name of the x dimension in the dataset. Defaults to 'x'.
+    ydim_name : str, optional
+        Name of the y dimension in the dataset. Defaults to 'y'.
+
+    Returns
+    -------
+    xarray.Dataset
+        The reprojected dataset.
+    """
+    variables = list(xrsource.data_vars.keys())
+    assert len(xrsource.sizes.keys())<3, "not supported 3 dimensions yet" 
+    
+    #
+    tr = xrsource.rio.transform() if xrsource.rio.transform() else transform_fromxy(
+        x =xrsource[xdim_name].values, y = xrsource[ydim_name].values)[0]
+
+    list_tif = []
+
+    for i, var in enumerate(variables):
+        source_image = xrsource[var].values
+
+        nodata = np.nan if np.any(np.isnan(source_image)) else 0
+
+        destination = np.zeros_like(source_image)
+
+        img, target_transform = reproject(
+            xrsource[var].values,
+            destination,
+
+            src_transform=tr,
+            src_crs=xrsource.rio.crs,
+            dst_crs=target_crs,
+            src_nodata = nodata,
+            resampling=Resampling.bilinear,
+
+        )
+        list_tif.append(np.squeeze(img))
+
+    return list_tif_2xarray(list_tif, target_transform,crs= target_crs, nodata=nodata,bands_names=variables,dimsformat='CHW')
+
 
 
 def get_boundaries_from_path(path, crs = None, round_numbers = False):
@@ -140,8 +297,9 @@ def clip_xarraydata(xarraydata:xarray.Dataset, polygon: Polygon = None, xyxy: Li
         Clipped xarray dataset.
     """
     xrmetadata = xarraydata.attrs.copy()
-    if xyxy:
-        prmasked = xarraydata.rio.write_crs(xarraydata.rio.crs)
+    if xyxy is not None:
+        crs = 'EPSG:4326' if xarraydata.rio.crs is None else xarraydata.rio.crs
+        prmasked = xarraydata.rio.write_crs(crs)
         x1, y1, x2, y2 = xyxy
         return prmasked.rio.clip_box(minx=x1, miny=y1, maxx=x2, maxy=y2)
     
@@ -359,7 +517,7 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
 
 def mask_xarray_using_rio(xrdata, geometry, drop = True, all_touched = True, reproject_to_raster = True):
     import rioxarray as rio
-    
+
     if reproject_to_raster:
         geometry = geometry.to_crs(xrdata.rio.crs)
     else:
@@ -392,15 +550,49 @@ def read_raster_data(path, crop_extent: List[float] = None):
     xr_data = xarray.open_dataset(path)
     dimnames = list(xr_data.sizes.keys())
     
+    if 'lon' in dimnames:
+        xr_data = xr_data.rename({'lon':'x','lat':'y'})
+
+    if 'longitude' in dimnames:
+        xr_data = xr_data.rename({'longitude':'x','latitude':'y'})
+    
     if crop_extent is not None:
-        if 'lon' in dimnames:
-            xr_data = xr_data.rename({'lon':'x','lat':'y'})
         xr_data = clip_xarraydata(xr_data,xyxy=crop_extent)
     
     return xr_data
 
 
-def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x', yrefdim_name = 'y'):
+def re_scale_xarray(xrdata, scale_factor, xdim_name = 'x', ydim_name = 'y', method ='nearest' ):
+    height, width = xrdata[list(xrdata.data_vars.keys())[0]].shape
+    newheight = int(height*scale_factor) 
+    newwidth = int(width*scale_factor)
+
+    oldx = xrdata[xdim_name].values
+    oldy = xrdata[ydim_name].values
+
+    (newx, newy), new_transform = get_new_coords_for_newshape(oldx, oldy, newheight,newwidth)
+
+    dst_re = xrdata.interp({'x': newx,'y': newy}, method = method)
+    
+    dst_re = dst_re.rio.write_transform(new_transform)
+    dst_re.attrs['transform'] = new_transform
+    dst_re.attrs['height'] = len(newy)
+    dst_re.attrs['width'] = len(newx)
+
+    return dst_re
+
+def resample(xrdata, newx, newy, target_transform, method = 'nearest', xdim_names = 'x', ydim_name = 'y'):
+
+    dst_re = xrdata.interp({xdim_names: newx,ydim_name: newy}, method = method)
+
+    dst_re.attrs['transform'] = target_transform
+    dst_re.attrs['height'] = len(newy)
+    dst_re.attrs['width'] = len(newx)
+    dst_re = dst_re.rio.write_transform(target_transform)
+
+    return dst_re
+
+def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x', yrefdim_name = 'y', target_crs = None):
     """
     Function to resize an xarray data and update its attributes based on another xarray reference 
     this script is based on the xarray's interp() function
@@ -419,7 +611,9 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
     -------
     a xarray data with new dimensions
     """
-    
+    from rasterio.enums import Resampling
+
+
     xrref = xrreference.copy()
 
     if yrefdim_name in xarraydata.sizes.keys():
@@ -429,12 +623,23 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
     elif 'lonfitude' in xarraydata.sizes.keys():
         xdim_name, ydim_name = 'longitude', 'latitude'
 
+    if target_crs is not None:
+        if str(target_crs) != str(xarraydata.rio.crs):
+            print(target_crs)
+            xarraydata = reproject_xrdata(xarraydata, xrreference.rio.crs)
+
     xrresampled = xarraydata.interp({xdim_name: xrref[xrefdim_name].values,
                                     ydim_name: xrref[yrefdim_name].values},method = method
                                     )
+    
+    #xrresampled = xarraydata.rio.reproject(
+    #    xrref.rio.crs,
+    #    shape = (len(xrref[yrefdim_name].values), len(xrref[xrefdim_name].values)),
+    #    Resampling = Resampling.bilinear)
 
     
-    xrresampled.attrs['transform'] = transform_fromxy(xrref[xrefdim_name].values,xrref[yrefdim_name].values, xrref.attrs['transform'][0])[0]
+    xrresampled.attrs['transform'] = get_transform_fromxy(xrref[xrefdim_name].values,
+                                                          xrref[yrefdim_name].values)#transform_fromxy(xrref[xrefdim_name].values,xrref[yrefdim_name].values, xrref.attrs['transform'][0])[0]
     #xrresampled.attrs['transform'] = xrref.rio.transform()
 
     xrresampled.attrs['height'] = xrresampled[list(xrresampled.keys())[0]].shape[0]
@@ -464,6 +669,7 @@ def transform_fromxy(x: np.ndarray,
     tuple
         A tuple containing the affine transformation and the shape of the resulting grid as a tuple (rows, columns).
     """
+    
     if spr is None:
         sprx = abs(x[1]- x[0])
         spry = abs(y[1]- y[0])

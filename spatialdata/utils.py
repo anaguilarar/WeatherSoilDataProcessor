@@ -7,7 +7,7 @@ import requests
 import json
 import pandas as pd
 
-from .gis_functions import list_tif_2xarray,resample_xarray
+from .gis_functions import list_tif_2xarray,resample_xarray,reproject_xrdata
 
 def download_file(start_date:str,
                 end_date:str,
@@ -68,15 +68,22 @@ def set_xr_attributes(xrdata, xdimref_name = 'x', ydimref_name = 'y'):
 
     return xrdata
 
-def resample_variables(dict_xr,reference_variable, only_use_first_date = True, verbose = False, method: str = 'linear'):
+def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
+                       verbose = False, method: str = 'linear', target_crs = None):
 
-    listvariables = list(dict_xr.keys())
-    listvariables.remove(reference_variable)
     
+    listvariables = list(dict_xr.keys())
+    if reference_variable is None:
+        reference_variable = listvariables[0]
+    listvariables.remove(reference_variable)
+
     xr_reference = dict_xr[reference_variable].copy()
 
+    target_crs = target_crs if target_crs is not None else xr_reference.rio.crs
     if len(xr_reference.sizes.keys()) >= 3 and only_use_first_date:
         xr_reference = check_depth_name_dims(xr_reference)
+    if str(target_crs) != str(xr_reference.rio.crs):
+        xr_reference = reproject_xrdata(xr_reference, target_crs)
 
     if 'x' in list(xr_reference.sizes.keys()):
         xdimref_name , ydimref_name = 'x', 'y'
@@ -96,8 +103,8 @@ def resample_variables(dict_xr,reference_variable, only_use_first_date = True, v
 
         if len(xr_data.sizes.keys()) >= 3 and only_use_first_date:
             xr_data = check_depth_name_dims(xr_data)
-
-        resampled_data = resample_xarray(xr_data, xr_reference, xrefdim_name=xdimref_name, yrefdim_name=ydimref_name, method = method)
+        
+        resampled_data = resample_xarray(xr_data, xr_reference, xrefdim_name=xdimref_name, yrefdim_name=ydimref_name, method = method, target_crs = target_crs)
         variable_name = list(resampled_data.data_vars.keys())[0]
         resampled_data = resampled_data[variable_name].values
 
