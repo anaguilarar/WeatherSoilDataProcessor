@@ -209,10 +209,15 @@ class SoilGridDataDonwload():
 
     
     @staticmethod
-    def _get_from_soilgrid_1000aggregate(var, depth, extent, output_folder):
+    def _get_from_soilgrid_1000aggregate(var, depth, extent, output_folder, source = 'google_storage'):
         #wv0010/wv0010_0-5cm_mean_1000.tif
-        file_name = "{}_{}cm_mean_1000.tif".format(var, depth)
-        url = AGGREGATESTORAGE1000 + "{}/".format(var) + file_name
+        if source == 'google_storage':
+            file_name = "{}_{}cm_mean.tif".format(var, depth)
+            url = GOOGLESTORAGE + "{}/".format(var) + file_name
+        else:
+            file_name = "{}_{}cm_mean_1000.tif".format(var, depth)
+            url = AGGREGATESTORAGE1000 + "{}/".format(var) + file_name
+            
         print(url)
         output_path = os.path.join(output_folder, file_name)
         download_using_rasterio(url, extent, output_path)

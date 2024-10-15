@@ -121,11 +121,11 @@ class DataCubeBase():
         path = self._date_path[variable]
         return read_raster_data(path, crop_extent = self._extent)
 
-    def stack_mlt_data(self, data_paths:Dict, reference_variable:str = None, verbose:bool = False, target_crs = None):
+    def stack_mlt_data(self, data_paths:Dict, reference_variable:str = None, verbose:bool = False, target_crs = None, ncores = 0):
         self._date_path = data_paths
         xr_variables_list = {k: self.read_product(v, k) for k,v in self._date_path.items()}
         resampled_data = resample_variables(xr_variables_list, 
-                                                    reference_variable=reference_variable, verbose = verbose, target_crs = target_crs)
+                                                    reference_variable=reference_variable, verbose = verbose, target_crs = target_crs, ncores = ncores)
         
         return resampled_data.where(resampled_data != -9999, np.nan)
     

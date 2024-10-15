@@ -6,6 +6,7 @@ import os
 import requests
 import json
 import pandas as pd
+import tqdm
 
 from .gis_functions import list_tif_2xarray,resample_xarray,reproject_xrdata
 
@@ -68,8 +69,19 @@ def set_xr_attributes(xrdata, xdimref_name = 'x', ydimref_name = 'y'):
 
     return xrdata
 
+def stack_xrdata_variable(xrdata, xrrefence, xrefdim_name, yrefdim_name,method, target_crs, only_use_first_date =True):
+
+        if len(xrdata.sizes.keys()) >= 3 and only_use_first_date:
+            xrdata = check_depth_name_dims(xrdata)
+    
+        resampled_data = resample_xarray(xrdata, xrrefence, xrefdim_name=xrefdim_name, yrefdim_name=yrefdim_name, method = method, target_crs = target_crs)
+        variable_name = list(resampled_data.data_vars.keys())[0]
+        resampled_data = resampled_data[variable_name].values
+        return resampled_data
+    
+
 def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
-                       verbose = False, method: str = 'linear', target_crs = None):
+                       verbose = False, method: str = 'linear', target_crs = None, ncores = 0):
 
     
     listvariables = list(dict_xr.keys())
@@ -97,20 +109,28 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
 
     variable_name = list(xr_reference.data_vars.keys())[0]
     resampled_list = [xr_reference[variable_name].values]
-    for var, xr_data in dict_xr.items():
-        if var == reference_variable:
-            continue
+    if ncores == 0:
+        for var, xr_data in dict_xr.items():
+            if var == reference_variable:
+                continue
+            resampled_data = stack_xrdata_variable(xr_data, xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date=only_use_first_date)
+            resampled_list.append(resampled_data)
+            if verbose: print('{} resampled ..'.format(var))
 
-        if len(xr_data.sizes.keys()) >= 3 and only_use_first_date:
-            xr_data = check_depth_name_dims(xr_data)
-        
-        resampled_data = resample_xarray(xr_data, xr_reference, xrefdim_name=xdimref_name, yrefdim_name=ydimref_name, method = method, target_crs = target_crs)
-        variable_name = list(resampled_data.data_vars.keys())[0]
-        resampled_data = resampled_data[variable_name].values
+    with tqdm.tqdm(total=len(listvariables)) as pbar:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
+                    
+                    future_to_variable ={executor.submit(
+                         stack_xrdata_variable, dict_xr[k],xdimref_name, ydimref_name, method, target_crs, only_use_first_date): (k) for k in listvariables}
 
-        if verbose: print('{} resampled ..'.format(var))
-
-        resampled_list.append(resampled_data)
+                    for future in concurrent.futures.as_completed(future_to_variable):
+                        vardata = future_to_variable[future]
+                        try:
+                                rs = future.result()
+                                resampled_list.append(rs)
+                        except Exception as exc:
+                                print(f"Request for year {vardata} generated an exception: {exc}")
+                        pbar.update(1)
 
 
     return list_tif_2xarray(resampled_list, metadata['transform'], 
