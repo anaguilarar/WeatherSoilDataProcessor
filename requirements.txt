@@ -1,5 +1,6 @@
 affine
 cdsapi
+DSSATTools
 geopandas
 matplotlib
 numpy
