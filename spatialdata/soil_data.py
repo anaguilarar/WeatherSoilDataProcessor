@@ -11,87 +11,41 @@ from .gis_functions import add_2dlayer_toxarrayr
 import os
 import pandas as pd
 
-def find_soil_textural_class(sand,clay):
+
+
+from typing import List
+
+
+
+def calculate_rgf(depths: List[int]) -> List[float]:
     """
-    Function that returns the USDA-NRCS soil textural class given 
-    the percent sand and clay.
-    
-    Parameters:
-    sand (float, integer): Sand content as a percentage  
-    clay (float, integer): Clay content as a percentage
-    
-    Returns:
-    string: One of the 12 soil textural classes
-    
-    Authors:
-    Andres Patrignani
-    
-    Date created:
-    12 Jan 2024
-    
-    Source:
-    E. Benham and R.J. Ahrens, W.D. 2009. 
-    Clarification of Soil Texture Class Boundaries. 
-    Nettleton National Soil Survey Center, USDA-NRCS, Lincoln, Nebraska.
-    adapted: https://soilwater.github.io/pynotes-agriscience/exercises/soil_textural_class.html
+    Calculate Root Growth Factor (RGF) for different soil depths.  Root growth factor, soil only, 0.0 to 1.0
+
+    Parameters
+    ----------
+    depths : List[int]
+        A list of soil layer depths in cm.
+
+    Returns
+    -------
+    List[float]
+        Root growth factor values for each depth, ranging from 0.0 to 1.0.
+
+    Raises
+    ------
+    ValueError
+        If the depths list is empty or contains negative values.
     """
-    
-    if not isinstance(sand, (int, float, np.int64)):
-        raise TypeError(f"Input type {type(sand)} is not valid.")
 
-    try:
-        # Determine silt content
-        silt = 100 - sand - clay
-        
-        if sand + clay > 100:
-            raise Exception('Inputs add over 100%')
-        elif sand < 0 or clay < 0:
-            raise Exception('One or more inputs are negative')
-            
-    except ValueError as e:
-        return f"Invalid input: {e}"
-    
-    # Classification rules
-    if silt + 1.5*clay < 15:
-        textural_class = 'sand'
-
-    elif silt + 1.5*clay >= 15 and silt + 2*clay < 30:
-        textural_class = 'loamy sand'
-
-    elif (clay >= 7 and clay < 20 and sand > 52 and silt + 2*clay >= 30) or (clay < 7 and silt < 50 and silt + 2*clay >= 30):
-        textural_class = 'sandy loam'
-
-    elif clay >= 7 and clay < 27 and silt >= 28 and silt < 50 and sand <= 52:
-        textural_class = 'loam'
-
-    elif (silt >= 50 and clay >= 12 and clay < 27) or (silt >= 50 and silt < 80 and clay < 12):
-        textural_class = 'silt loam'
-
-    elif silt >= 80 and clay < 12:
-        textural_class = 'silt'
-
-    elif clay >= 20 and clay < 35 and silt < 28 and sand > 45:
-        textural_class = 'sandy clay loam'
-
-    elif clay >= 27 and clay < 40 and sand > 20 and sand <= 45:
-        textural_class = 'clay loam'
-
-    elif clay >= 27 and clay < 40 and sand <= 20:
-        textural_class = 'silty clay loam'
-
-    elif clay >= 35 and sand > 45:
-        textural_class = 'sandy clay'
-
-    elif clay >= 40 and silt >= 40:
-        textural_class = 'silty clay'
-
-    elif clay >= 40 and sand <= 45 and silt < 40:
-        textural_class = 'clay'
-
+    if len(depths)>1:
+        depths = np.array(depths)
+        layer_center = ([float(depths[0]/2)] + ((depths[1:] - depths[:-1]) / 2 + depths[:-1]).tolist())
     else:
-        textural_class = 'unknown' # in case we failed to catch any errors earlier
+        layer_center = depths
+    rgf = [1 if i <=15 else float(1 * np.exp(-0.02 * i)) for i in layer_center]
 
-    return textural_class
+    return rgf
+
 
 TEXTURE_CLASSES = {
     0 : 'unknown',
@@ -217,7 +171,7 @@ class SoilGridDataDonwload():
         else:
             file_name = "{}_{}cm_mean_1000.tif".format(var, depth)
             url = AGGREGATESTORAGE1000 + "{}/".format(var) + file_name
-            
+
         print(url)
         output_path = os.path.join(output_folder, file_name)
         download_using_rasterio(url, extent, output_path)

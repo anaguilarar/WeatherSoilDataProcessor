@@ -117,7 +117,8 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
             resampled_list.append(resampled_data)
             if verbose: print('{} resampled ..'.format(var))
 
-    with tqdm.tqdm(total=len(listvariables)) as pbar:
+    else:
+        with tqdm.tqdm(total=len(listvariables)) as pbar:
                 with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
                     
                     future_to_variable ={executor.submit(

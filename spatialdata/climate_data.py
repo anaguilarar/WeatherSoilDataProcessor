@@ -492,7 +492,7 @@ class MLTWeatherDataCube(DataCubeBase):
         for d in tqdm.tqdm(self._query_dates.keys()):
 
             dir_single_date_path = self.query_date(d)
-            xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, target_crs =target_crs, ncores =0)
+            xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, target_crs =target_crs, ncores =ncores)
             #dval = datetime.strptime(d, '%Y%m%d') 
             #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
             xr_dict[d] = xrsingledate
