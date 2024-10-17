@@ -437,14 +437,17 @@ def from_weather_to_dssat(xrdata, groupby: str = None, date_name ='date',
 
     weather_df = pd.concat(dfdataper_date)
     weather_df = weather_df.rename(columns = changenames)
+    
+    parmasdssat = {k:k for k,v in params_df_names.items()}
     if not os.path.exists(outputpath):
         os.makedirs(outputpath)
     if groupby:
         uniquegroups = np.unique(weather_df[groupby].values)
         for i in uniquegroups:
             subset = weather_df.loc[weather_df[groupby] == i]
-            
-            weatherdata = DSSAT_Weather(subset.reset_index().dropna(), params_df_names, refht = refht)
+            if not all(subset.TMIN <= subset.TMAX):
+                subset.loc[(subset.TMIN > subset.TMAX),"TMAX"] = subset.loc[(subset.TMIN > subset.TMAX),"TMIN"]+1
+            weatherdata = DSSAT_Weather(subset.reset_index().dropna(), parmasdssat, refht = refht)
             weatherdata._name = outputfn if outputfn is not None else weatherdata._name
             if codes is not None:
                 weatherdata._name = weatherdata._name+'{}'.format(codes[i].replace(' ',''))
