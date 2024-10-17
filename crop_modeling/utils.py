@@ -1,5 +1,5 @@
 from rosetta import SoilData, rosetta
-
+import numpy as np
 
 
 def find_soil_textural_class(sand,clay):
