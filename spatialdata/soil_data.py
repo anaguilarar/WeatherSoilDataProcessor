@@ -231,7 +231,6 @@ class SoilDataCube(DataCubeBase):
     def multi_depth_data(self, reference_variable = 'wv0033', verbose = False, target_crs = None):
         self.xr_dict = {}
         for k,v in tqdm.tqdm(self._query_paths.items()):
-            print(v)
             self.xr_dict[k] = self.stack_mlt_data(v, reference_variable= reference_variable, verbose = verbose, target_crs = target_crs)
         return self.xr_dict
 

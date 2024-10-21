@@ -489,13 +489,32 @@ class MLTWeatherDataCube(DataCubeBase):
     
     def multitemporal_data(self, reference_variable = 'precipitation', target_crs = None, ncores = 0):
         xr_dict = {}
-        for d in tqdm.tqdm(self._query_dates.keys()):
+        if ncores == 0:
+            for d in tqdm.tqdm(self._query_dates.keys()):
+                dir_single_date_path = self.query_date(d)
+                xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, 
+                                                target_crs =target_crs)
+                #dval = datetime.strptime(d, '%Y%m%d') 
+                #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
+                xr_dict[d] = xrsingledate
+        else:
+            with tqdm.tqdm(total=len(list(self._query_dates.keys()))) as pbar:
+                with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
+                    
+                    future_to_day ={executor.submit(self.stack_mlt_data, self.query_date(d), 
+                                                    reference_variable, False,
+                                                target_crs): (d) for d in self._query_dates.keys()}
 
-            dir_single_date_path = self.query_date(d)
-            xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, target_crs =target_crs, ncores =ncores)
-            #dval = datetime.strptime(d, '%Y%m%d') 
-            #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
-            xr_dict[d] = xrsingledate
+                    for future in concurrent.futures.as_completed(future_to_day):
+                        date = future_to_day[future]
+                        try:
+                                rs = future.result()
+                                xr_dict[date] = rs
+                                
+                        except Exception as exc:
+                                print(f"Request for year {date} generated an exception: {exc}")
+                        pbar.update(1)
+                            
 
         return xr_dict
     
@@ -520,6 +539,7 @@ class MLTWeatherDataCube(DataCubeBase):
                         try:
                                 rs = future.result()
                                 xrdict_masked[date] = rs
+                                
                         except Exception as exc:
                                 print(f"Request for year {date} generated an exception: {exc}")
                         pbar.update(1)

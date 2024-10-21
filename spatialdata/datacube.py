@@ -125,7 +125,8 @@ class DataCubeBase():
         self._date_path = data_paths
         xr_variables_list = {k: self.read_product(v, k) for k,v in self._date_path.items()}
         resampled_data = resample_variables(xr_variables_list, 
-                                                    reference_variable=reference_variable, verbose = verbose, target_crs = target_crs, ncores = ncores)
+                                                    reference_variable=reference_variable, verbose = verbose, 
+                                                    target_crs = target_crs, ncores = ncores)
         
         return resampled_data.where(resampled_data != -9999, np.nan)
     

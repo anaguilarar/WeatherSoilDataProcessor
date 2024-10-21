@@ -122,7 +122,7 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
                 with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
                     
                     future_to_variable ={executor.submit(
-                         stack_xrdata_variable, dict_xr[k],xdimref_name, ydimref_name, method, target_crs, only_use_first_date): (k) for k in listvariables}
+                         stack_xrdata_variable, dict_xr[k],xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date): (k) for k in listvariables}
 
                     for future in concurrent.futures.as_completed(future_to_variable):
                         vardata = future_to_variable[future]

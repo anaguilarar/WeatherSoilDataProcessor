@@ -625,7 +625,6 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
 
     if target_crs is not None:
         if str(target_crs) != str(xarraydata.rio.crs):
-            print(target_crs)
             xarraydata = reproject_xrdata(xarraydata, xrreference.rio.crs)
 
     xrresampled = xarraydata.interp({xdim_name: xrref[xrefdim_name].values,
