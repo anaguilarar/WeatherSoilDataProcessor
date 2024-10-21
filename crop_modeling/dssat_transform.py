@@ -1,7 +1,8 @@
+
+from .soil_funs import find_soil_textural_class, calculate_sks, slu1
+import pandas as pd
 from DSSATTools.weather import Weather
 from DSSATTools.soil import SoilProfile, SoilLayer
-from .utils import find_soil_textural_class, calculate_sks, slu1
-import pandas as pd
 
 import numpy as np
 
