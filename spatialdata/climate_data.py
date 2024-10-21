@@ -1,24 +1,25 @@
 import os
 import cdsapi
 import copy
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict
 import concurrent.futures
 import pandas as pd
 from shapely.geometry import Polygon
-from .utils import download_file
-from .gis_functions import (from_polygon_2bbox, from_xyxy_2polygon, list_tif_2xarray, 
-                            read_raster_data, mask_xarray_using_gpdgeometry, mask_xarray_using_rio)
-from .files_manager import days_range_asstring, months_range_asstring, split_date, create_yearly_query, find_date_instring
-import shapely
-import xarray
+
+from .gis_functions import (from_polygon_2bbox, from_xyxy_2polygon, 
+                            list_tif_2xarray)
+
+from .files_manager import (days_range_asstring, months_range_asstring, 
+                            split_date, create_yearly_query)
+
 from datetime import datetime
-from .utils import resample_variables
+from .utils import download_file
 from .datacube import DataCubeBase
 
 from rasterio.mask import mask
 import rasterio
 import geopandas as gpd
-import affine
+
 import numpy as np
 
 import tqdm
