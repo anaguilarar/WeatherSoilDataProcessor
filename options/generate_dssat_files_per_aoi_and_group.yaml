@@ -1,0 +1,53 @@
+
+
+SPATIAL_INFO:
+  boundaries: "data/country.shp"
+  crs: 'ESRI:54052'
+
+ROI:
+  path: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/country/vector/tb_limitealdea_morethan100.shp"
+  roi_column: id
+  
+SOIL:
+  path: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/soil/hnd"
+  variables: ["bdod","cfvo", "clay", "nitrogen","phh2o", "sand", "silt", "soc","wv0010","cec", "wv0033", "wv1500"]
+  depths: ["0-5","5-15","15-30","30-60"]
+  crs_reference: 'ESRI:54052'
+  reference_variable: sand
+  depth_refernce: '0-5'
+
+GROUPBY:
+  variable: texture
+
+WEATHER:
+  paths:
+    precipitation: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/precipitation_hnd_raw"
+    srad: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/solar_radiation_hnd_raw"
+    tmax: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/temperature_tmax_hnd_raw"
+    tmin: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/temperature_tmin_hnd_raw"
+  scale_factor: 10
+  starting_date: '2022-01-01'
+  ending_date: '2023-12-31'
+  reference_variable: 'precipitation'
+  
+  
+GENERAL:
+  country: 'hnd'
+  task: dssat
+  ncores: 10
+  crs_reference: 'EPSG:4326'
+
+DSSAT:
+  variable_names:
+    DATE: "date"
+    TMIN: "tmin"
+    SRAD: "srad"
+    RAIN: "precipitation"
+    TMAX: "tmax"
+    LON: "x"
+    LAT: "y"
+    
+
+PATHS:
+  output_path: "D:/OneDrive - CGIAR/projects/suelos_honduras/dssat_runs_hnd"
+

@@ -5,8 +5,8 @@ SPATIAL_INFO:
   crs: 'ESRI:54052'
 
 SOIL:
-  #variables: ["bdod","cfvo", "clay", "nitrogen","phh2o", "sand", "silt", "soc","wv0010","cec", "wv0033", "wv1500"]
-  variables: ["clay",  "sand", "silt", "wv0010","cec", "wv0033", "wv1500"]
+  variables: ["wv0010","wv0033", "wv1500"]
+  #variables: ["clay",  "sand", "silt", "wv0010","cec", "wv0033", "wv1500"]
   depths: ["0-5","5-15","15-30","30-60"]
   mission: soilgrids
 
