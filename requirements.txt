@@ -11,6 +11,7 @@ PyYAML
 rasterio
 Requests
 rioxarray
+scipy
 Shapely
 soilgrids
 tqdm
