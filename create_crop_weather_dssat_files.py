@@ -6,10 +6,11 @@ import logging
 import numpy as np
 import os
 import xarray
-
+import rioxarray as rio
 from datetime import datetime
 from omegaconf import OmegaConf
 from tqdm import tqdm
+import glob
 
 from spatialdata.climate_data import MLTWeatherDataCube
 from spatialdata.files_manager import IntervalFolderManager, SoilFolderManager
@@ -122,7 +123,19 @@ def main():
     rois = gdf[config.ROI.roi_column].values
 
     for roi_name in rois:
+        output = os.path.join(config.PATHS.output_path, roi_name )
         logging.info("----- Processing {}".format(roi_name))
+
+        if not os.path.exists(output):
+            os.mkdir(output)
+        else:
+            solfilepaths = glob.glob(output+'/**/*SOL', recursive=True)
+            wthfilepaths = glob.glob(output+'/**/*WTH', recursive=True)
+            if len(solfilepaths)>0 and len(wthfilepaths) > 0: 
+                print(f'{roi_name} was already processed')
+                continue
+            
+        
         subset = gdf.loc[gdf[config.ROI.roi_column] == roi_name]
         logging.info("  Masking")
         print("==> soil")
@@ -173,9 +186,7 @@ def main():
 
         
 
-        output = os.path.join(config.PATHS.output_path, roi_name )
-        if not os.path.exists(output):
-            os.mkdir(output)
+        
         
         ### DSSAT FILES
                 
@@ -190,20 +201,21 @@ def main():
 
         soil_df = from_soil_to_dssat(soil_datacube_mrs, groupby=config.GROUPBY.variable, outputpath=output, outputfn='SOIL'+roi_name, codes=TEXTURE_CLASSES, country = config.GENERAL.country.upper(),site = roi_name)
         soil_df.to_csv(os.path.join(output,f'SOIL{roi_name}.csv'))
-        soil_datacube_mrs.rio.to_file(os.path.join(output,f'SOIL{roi_name}.nc'))
+        #soil_datacube_mrs.to_netcdf(os.path.join(output,f'SOIL{roi_name}.nc'))
+        print(soil_datacube_mrs.data_vars)
 
         logging.info(f"  creating DSSAT weather file in {output}")
         from_weather_to_dssat(copy.deepcopy(weather_datacube_mrs), date_name = 'date', 
                             groupby = config.GROUPBY.variable, 
                             params_df_names=config.DSSAT.variable_names,
                             outputpath=output, outputfn = 'WHTE'+roi_name, codes=TEXTURE_CLASSES, ncores=config.GENERAL.ncores)
-    
+        print(len(weather_datacube_mrs.date.values))
         vars_metric = {}
 
         for i in weather_datacube_mrs.data_vars.keys():
             vars_metric.update({i: 'mean'})
         vars_metric.pop(config.GROUPBY.variable)
-        df = check_weatherxr_scales(weather_datacube_mrs).to_dataframe().dropna().reset_index().groupby([config.GROUPBY.variable,'date']).agg(vars_metric).reset_index()
+        df = check_weatherxr_scales(copy.deepcopy(weather_datacube_mrs)).to_dataframe().dropna().reset_index().groupby([config.GROUPBY.variable,'date']).agg(vars_metric).reset_index()
 
         df.to_csv(os.path.join(output,f'WHTE{roi_name}.csv'))
 
