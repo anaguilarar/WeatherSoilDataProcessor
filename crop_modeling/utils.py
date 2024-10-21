@@ -31,15 +31,14 @@ def check_weatherxr_scales(xrdata, tmax_colname = 'tmax', tmin_colname = 'tmin',
     return xrdata
 
 
-def summarize_dataframe(date, dataframe, variables, groupby = None, depth_name = 'date'):
-        ddf = dataframe.loc[dataframe[depth_name] == date]
-
+def summarize_dataframe(date, xrdata, variables, groupby = None):
+        ddf = xrdata.to_dataframe().reset_index().dropna()
         if groupby:
             ddf = ddf.groupby([groupby], dropna = True).agg(variables).reset_index()
         else:
             ddf['tmp'] = 0
             groupby= 'tmp'
-            ddf = dataframe.dropna().reset_index()
+            ddf = ddf.dropna().reset_index()
         ddf['date'] = date
 
         return ddf
@@ -66,16 +65,16 @@ def from_weather_to_dssat(xrdata, groupby: str = None, date_name ='date',
 
     xrdata = check_weatherxr_scales(xrdata)
     dfdataper_date = []
-    weather_df = xrdata.to_dataframe().reset_index()
+    #weather_df = xrdata.to_dataframe().reset_index().dropna()
     
     if ncores == 0:
-        for d in tqdm(np.unique(weather_df[date_name].values)):
-            ddf = summarize_dataframe(d, weather_df, weatherdatavars, groupby, depth_name = 'date')
+        for i, d in tqdm(enumerate(np.unique(xrdata[date_name].values))):
+            ddf = summarize_dataframe(d, xrdata.isel({date_name:i}), weatherdatavars, groupby)
             dfdataper_date.append(ddf)
     else:
-        with tqdm(total=len(np.unique(weather_df[date_name].values))) as pbar:
+        with tqdm(total=len(np.unique(xrdata[date_name].values))) as pbar:
             with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
-                future_to_day ={executor.submit(summarize_dataframe, d, weather_df, weatherdatavars, groupby): (d) for d in np.unique(weather_df[date_name].values)}
+                future_to_day ={executor.submit(summarize_dataframe, d, xrdata.isel({date_name:i}), weatherdatavars, groupby): (d) for i, d in enumerate(np.unique(xrdata[date_name].values))}
                 for future in concurrent.futures.as_completed(future_to_day):
                     date = future_to_day[future]
                     try:
@@ -138,7 +137,7 @@ def from_soil_to_dssat(xrdata, groupby: str = None, depth_name ='depth',
 
     for i in uniquegroups:
         subset = ddf.loc[ddf[groupby] == i]
-        
+        sand, clay = None, None
         sand = check_percentage(np.nanmean(subset.loc[subset[depth_name]  == firstdepth[0]].sand.values))
         clay = check_percentage(np.nanmean(subset.loc[subset[depth_name]  == firstdepth[0]].clay.values))
         print(f"sand {sand} clay {clay}")
