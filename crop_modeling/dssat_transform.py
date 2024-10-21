@@ -249,7 +249,6 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         self._clay = kwargs.get('clay',None)
         self._silt = kwargs.get('silt',None)
 
-
         super().__init__(pars = {})
         self.soil_general_soilline_parameters()
         self.soilgrid_dict()
@@ -439,8 +438,7 @@ def from_weather_to_dssat(xrdata, groupby: str = None, date_name ='date',
     weather_df = weather_df.rename(columns = changenames)
     
     parmasdssat = {k:k for k,v in params_df_names.items()}
-    if not os.path.exists(outputpath):
-        os.makedirs(outputpath)
+    
     if groupby:
         uniquegroups = np.unique(weather_df[groupby].values)
         for i in uniquegroups:
@@ -451,10 +449,15 @@ def from_weather_to_dssat(xrdata, groupby: str = None, date_name ='date',
             weatherdata._name = outputfn if outputfn is not None else weatherdata._name
             if codes is not None:
                 weatherdata._name = weatherdata._name+'{}'.format(codes[i].replace(' ',''))
+                outputpathgroup = os.path.join(outputpath,'{}'.format(codes[i].replace(' ','')))
+            
             else:
                 weatherdata._name = weatherdata._name+'{}'.format(i)
-
-            weatherdata.write(outputpath)
+                outputpathgroup = os.path.join(outputpath,'_{}'.format(i))
+            
+            if not os.path.exists(outputpathgroup):
+                os.mkdir(outputpathgroup)
+            weatherdata.write(outputpathgroup)
     
 def check_percentage(value):
     return value *0.1 if np.max(value)>100 else value
@@ -480,24 +483,31 @@ def from_soil_to_dssat(xrdata, groupby: str = None, depth_name ='depth',
     firstdepth = np.unique(soildf[depth_name].values).tolist()
     firstdepth.sort()
 
-    if not os.path.exists(outputpath):
-        os.makedirs(outputpath)
     for i in uniquegroups:
         subset = ddf.loc[ddf[groupby] == i]
-
-        long = subset.loc[subset[depth_name] == firstdepth[0]].x.values.mean()
-        lat = subset.loc[subset[depth_name] == firstdepth[0]].y.values.mean()
-        sand = check_percentage(subset.loc[subset[depth_name]  == firstdepth[0]].sand.values.mean())
-        clay = check_percentage(subset.loc[subset[depth_name]  == firstdepth[0]].clay.values.mean())
-
-        ddsat_soilgrid = DSSATSoil_fromSOILGRIDS(long = long, lat = lat, sand = sand, clay = clay, country = country, site = site)
         
-        ddsat_soilgrid.add_soil_layers_from_df(subset)
+        sand = check_percentage(np.nanmean(subset.loc[subset[depth_name]  == firstdepth[0]].sand.values))
+        clay = check_percentage(np.nanmean(subset.loc[subset[depth_name]  == firstdepth[0]].clay.values))
+        print(f"sand {sand} clay {clay}")
+        if not np.isnan(clay) and not np.isnan(sand):
+            long = subset.loc[subset[depth_name] == firstdepth[0]].x.values.mean()
+            lat = subset.loc[subset[depth_name] == firstdepth[0]].y.values.mean()
+        
+            ddsat_soilgrid = DSSATSoil_fromSOILGRIDS(long = long, lat = lat, sand = sand, clay = clay, country = country, site = site)
+            
+            ddsat_soilgrid.add_soil_layers_from_df(subset)
 
-        if codes is not None:
-            outputfn = outputfn+'{}'.format(codes[i].replace(' ',''))
+            if codes is not None:
+                outputfngroup = outputfn+'{}'.format(codes[i].replace(' ',''))
+                outputpathgroup = os.path.join(outputpath,'{}'.format(codes[i].replace(' ','')))
+            else:
+                outputfngroup = outputfn+'{}'.format(i)
+                outputpathgroup = os.path.join(outputpath,'{}'.format(i))    
+            if not os.path.exists(outputpathgroup):
+                os.mkdir(outputpathgroup)
 
-        fn = os.path.join(outputpath, outputfn+'.SOL')
-        ddsat_soilgrid.write(fn)
-    
+            fn = os.path.join(outputpathgroup, outputfngroup+'.SOL')
+            ddsat_soilgrid.write(fn)
+        else:
+            print("It must have at least sand and clay values")
     return ddf
