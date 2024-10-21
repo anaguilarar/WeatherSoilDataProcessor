@@ -11,7 +11,7 @@ capabilities, this tool is ideal for scientific and agricultural research applic
 ## Installation
 
 * Python 3.7+
-* pip -r requirements.txt
+* pip install -r requirements.txt
 
 
 ## How to Use
