@@ -15,13 +15,58 @@ capabilities, this tool is ideal for scientific and agricultural research applic
 
 
 ## How to Use
+
+### Example: Downlaod Weather data from AgEra5 and Chirps
+This script downloads weather data based on the configuration provided in a YAML file. The downloaded data will be saved in a specified folder and can be exported in various formats like NetCDF.
+```bash
+python download_weather_data.py --config options/weather_data_downloading_config.yaml
+```
+Here’s an example of what your generate_dssat_files_per_aoi_and_group.yaml file should include:
+```yaml
+
+DATES:
+  starting_date: "2001-01-01"
+  ending_date: "2001-12-31"
+
+GENERAL:
+  suffix: '_weather_data' # if the output weather folder has any suffix
+  export_netcdf: True
+
+SPATIAL_INFO:
+  spatial_file: 'data/country.shp' # if the shapefile is not provided the spatial extent in WGS84 can be used
+  extent: [-90, 12, -83, 17] ## [xmin, ymin, xmax, ymax] for the spatial extent
+
+PATHS:
+  output_path: "path/to/output_directory"
+
+WEATHER:
+  variables:
+    precipitation:
+      mission: chirps 
+      source: chips
+
+    solar_radiation: 
+      mission: agera5
+      source: agera5
+
+    temperature_tmax:
+      mission: agera5
+      source: agera5
+
+    temperature_tmin:
+      mission: agera5
+      source: agera5
+
+
+```
+
 ### Example: Generating Weather and Soil Data Cubes with DSSAT Export
 This script generates multi-temporal weather and multi-depth soil data cubes and exports them in DSSAT-compatible format. To run the script, you need to provide a configuration file (in YAML format) that specifies the paths, variables, and settings for the process.
 ```bash
-python create_crop_weather_dssat_files.py --config generate_dssat_files_per_aoi_and_group.yaml
+python create_crop_weather_dssat_files.py --config options/generate_dssat_files_per_aoi_and_group.yaml
 ```
 
-Here’s an example of what your options.yaml file should include:
+Here’s an example of what your generate_dssat_files_per_aoi_and_group.yaml file should include:
 ```yaml
 
 SPATIAL_INFO:
