@@ -108,6 +108,19 @@ def create_yearly_query(init_date, end_date):
         
     return queryyearlydates
 
+def uncompress_zip_path(path, year):
+    foldermanager = check_filesinzipfolder(glob.glob(path+'/*{}*'.format(year)))
+    if foldermanager['unzip']:
+        if not os.path.exists(foldermanager['tempfolder']):
+            with zipfile.ZipFile(foldermanager['inputfolder'], 'r') as zip_ref:
+                zip_ref.extractall(foldermanager['tempfolder'])
+        info_path = foldermanager['tempfolder']
+    else:
+        info_path = foldermanager['inputfolder']
+
+    return info_path
+
+
 class IntervalFolderManager:
     """
     A class to manage folder operations, split date ranges, and handle zip files in a given directory.
@@ -185,22 +198,9 @@ class IntervalFolderManager:
         str
             Path to the folder containing the extracted or original files.
         """
+        if extension == ".zip":
+            return uncompress_zip_path(self.path, year)
         
-        foldermanager = check_filesinzipfolder(glob.glob(self.path+'/*{}*'.format(year)))
-
-        if foldermanager['unzip']:
-            if not os.path.exists(foldermanager['tempfolder']):
-                with zipfile.ZipFile(foldermanager['inputfolder'], 'r') as zip_ref:
-                    zip_ref.extractall(foldermanager['tempfolder'])
-            info_path = foldermanager['tempfolder']
-            self._folders_to_remove.append(foldermanager['tempfolder'])
-
-        else:
-            info_path = foldermanager['inputfolder']
-
-        self._remove_folder = foldermanager['unzip']
-        
-        return info_path
 
     def check_path_exists(self):
         assert os.path.exists(self.path), "The path does not exist"

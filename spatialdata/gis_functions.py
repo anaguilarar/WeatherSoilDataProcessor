@@ -546,15 +546,20 @@ def mask_xarray_using_gpdgeometry(xrdata, geometry, xdim_name = 'x', ydim_name =
 
     return prmasked
 
-def read_raster_data(path, crop_extent: List[float] = None):
+def read_raster_data(path, crop_extent: List[float] = None, xdim_name = 'x', ydim_name = 'y'):
+    assert os.path.exists(path), f"{path} does not exits" 
+    
     xr_data = xarray.open_dataset(path)
     dimnames = list(xr_data.sizes.keys())
     
-    if 'lon' in dimnames:
-        xr_data = xr_data.rename({'lon':'x','lat':'y'})
+    if 'lon' in dimnames and xdim_name!='lon':
+        xr_data = xr_data.rename({'lon':xdim_name,'lat':ydim_name})
 
-    if 'longitude' in dimnames:
-        xr_data = xr_data.rename({'longitude':'x','latitude':'y'})
+    elif 'longitude' in dimnames and xdim_name!='longitude':
+        xr_data = xr_data.rename({'longitude':xdim_name,'latitude':ydim_name})
+    
+    elif 'x' in dimnames and xdim_name!='x':
+        xr_data = xr_data.rename({'x':xdim_name,'y':ydim_name})
     
     if crop_extent is not None:
         xr_data = clip_xarraydata(xr_data,xyxy=crop_extent)
