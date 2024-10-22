@@ -383,7 +383,13 @@ class ClimateDataDownload(object):
         for var,info in weather_variables.items():
             
             outputpath = self._create_dowload_folder(var, self.output_folder, suffix_output_folder)
-            if 'solar_radiation' in var:
+
+            if 'relativity_humidity' in var:
+                file_paths = self._get_relativity_humidity(mission=info['mission'], 
+                                            urlhost=info['source'],
+                                            output_path=outputpath)
+                
+            elif 'solar_radiation' in var:
                 file_paths = self._get_solar_radiation(mission=info['mission'], 
                                             urlhost=info['source'],
                                             output_path=outputpath)
