@@ -384,8 +384,8 @@ class ClimateDataDownload(object):
             
             outputpath = self._create_dowload_folder(var, self.output_folder, suffix_output_folder)
 
-            if 'relativity_humidity' in var:
-                file_paths = self._get_relativity_humidity(mission=info['mission'], 
+            if 'relative_humidity' in var:
+                file_paths = self._get_relative_humidity(mission=info['mission'], 
                                             urlhost=info['source'],
                                             output_path=outputpath)
                 
@@ -489,7 +489,7 @@ class ClimateDataDownload(object):
                 'download_path':  output_folder
             }
 
-    def _get_relativity_humidity(self, mission = None, urlhost = None, output_path = None):
+    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None):
         """
         function for downloading relativity_humidity data.
 
