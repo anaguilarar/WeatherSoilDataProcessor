@@ -1,6 +1,6 @@
 DATES:
   starting_date: "2001-01-01"
-  ending_date: "2003-08-31"
+  ending_date: "2001-12-31"
 
 WEATHER:
   variables:
@@ -22,16 +22,12 @@ WEATHER:
 
 SPATIAL_INFO:
   spatial_file: 'data/country.shp'
-  spatial_sub_file: 'data/tb_limitealdeas.shp'
-  extent: [-80,  12, -90, 17]
+  extent: [-90, 12, -83, 17]
 
 GENERAL:
   suffix: 'hnd'
-
-  task: download
+  export_netcdf: True
 
 PATHS:
-
-  input_path: "weather/"
   output_path: "weather/"
 
