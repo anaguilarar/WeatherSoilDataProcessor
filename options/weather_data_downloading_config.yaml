@@ -26,7 +26,7 @@ SPATIAL_INFO:
 
 GENERAL:
   suffix: 'hnd'
-  export_netcdf: True
+  export_as_netcdf: True
 
 PATHS:
   output_path: "weather/"
