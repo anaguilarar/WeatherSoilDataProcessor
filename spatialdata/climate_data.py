@@ -483,7 +483,34 @@ class ClimateDataDownload(object):
                 'download_path':  output_folder
             }
 
+    def _get_relativity_humidity(self, mission = None, urlhost = None, output_path = None):
+        """
+        function for downloading relativity_humidity data.
 
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        """
+        mission = self.missions()['relativity_humidity'] if mission is None else mission
+        urlhost = self.download_from()['relativity_humidity'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+
+        if mission == 'agera5' and urlhost == 'datacube':
+            raise ValueError("not implemented yet") ##TODO
+
+        if mission == 'agera5' and urlhost == 'agera5':
+            return donwload_mlt_data_from_agera5('2m_relative_humidity', 
+                                        starting_date= self._init_date,
+                                        ending_date=self._ending_date, 
+                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
+                                        output_folder= output_path,
+                                        statistic= [""])
+    
     def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None):
         """
         Placeholder function for downloading solar radiation data.
