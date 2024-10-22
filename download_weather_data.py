@@ -1,6 +1,6 @@
 from omegaconf import OmegaConf
 from spatialdata.climate_data import ClimateDataDownload
-
+from spatialdata.gis_functions import get_boundaries_from_path
 import logging
 import argparse
 
@@ -26,11 +26,14 @@ def main():
     config = OmegaConf.load(args.config)
 
     logging.info(f"Reading configuration from {args.config}")
-
+    if config.SPATIAL_INFO.get('spatial_file',None):
+        extent = get_boundaries_from_path(config.SPATIAL_INFO.get('spatial_file',None), round_numbers = True)
+    else:
+        extent = config.SPATIAL_INFO.extent
     # Initialize ClimateDataDownload object with config parameters
     climatedata = ClimateDataDownload(starting_date= config.DATES.starting_date,
                                 ending_date= config.DATES.ending_date, 
-                                xyxy= config.GENERAL.extent, 
+                                xyxy= extent, 
                                 output_folder= config.PATHS.output_path)
     
     
