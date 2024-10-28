@@ -157,7 +157,8 @@ def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
     """
     variables = list(xrsource.data_vars.keys())
     assert len(xrsource.sizes.keys())<3, "not supported 3 dimensions yet" 
-    
+    print(xrsource.rio.crs)
+    print(xrsource)
     #
     tr = xrsource.rio.transform() if xrsource.rio.transform() else transform_fromxy(
         x =xrsource[xdim_name].values, y = xrsource[ydim_name].values)[0]
@@ -629,7 +630,7 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
         xdim_name, ydim_name = 'longitude', 'latitude'
 
     if target_crs is not None:
-        if str(target_crs) != str(xarraydata.rio.crs):
+        if str(target_crs) != str(xarraydata.rio.crs) and xarraydata.rio.crs is not None: ### TODO: there must be a warning here
             xarraydata = reproject_xrdata(xarraydata, xrreference.rio.crs)
 
     xrresampled = xarraydata.interp({xdim_name: xrref[xrefdim_name].values,

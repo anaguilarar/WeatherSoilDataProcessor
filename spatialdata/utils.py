@@ -109,31 +109,14 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
 
     variable_name = list(xr_reference.data_vars.keys())[0]
     resampled_list = [xr_reference[variable_name].values]
-    if ncores == 0:
-        for var, xr_data in dict_xr.items():
-            if var == reference_variable:
-                continue
-            resampled_data = stack_xrdata_variable(xr_data, xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date=only_use_first_date)
-            resampled_list.append(resampled_data)
-            if verbose: print('{} resampled ..'.format(var))
+    for var, xr_data in dict_xr.items():
+        if var == reference_variable:
+            continue
+        resampled_data = stack_xrdata_variable(xr_data, xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date=only_use_first_date)
+        resampled_list.append(resampled_data)
+        if verbose: print('{} resampled ..'.format(var))
 
-    else:
-        with tqdm.tqdm(total=len(listvariables)) as pbar:
-                with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
-                    
-                    future_to_variable ={executor.submit(
-                         stack_xrdata_variable, dict_xr[k],xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date): (k) for k in listvariables}
-
-                    for future in concurrent.futures.as_completed(future_to_variable):
-                        vardata = future_to_variable[future]
-                        try:
-                                rs = future.result()
-                                resampled_list.append(rs)
-                        except Exception as exc:
-                                print(f"Request for year {vardata} generated an exception: {exc}")
-                        pbar.update(1)
-
-
+    
     return list_tif_2xarray(resampled_list, metadata['transform'], 
                     crs = metadata['crs'], nodata=-9999, 
                     bands_names = [reference_variable]+listvariables,
