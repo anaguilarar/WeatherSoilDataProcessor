@@ -54,7 +54,7 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         'silt': ['SLSI', 0.01],
         'nitrogen': ['SLNI', 0.01],
         'bdod': ['SBDM', 0.01],
-        'cfvo': ['SLCF', 0.01],
+        'cfvo': ['SLCF', 0.1],
         'phh2o': ['SLHW', 0.1],
         'soc': ['SLOC', 0.01],
         'cec': ['SCEC', 0.1],
