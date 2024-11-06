@@ -1,4 +1,5 @@
-from spatialdata.gis_functions import mask_xarray_using_rio, read_raster_data, clip_xarraydata, reproject_xrdata
+from spatialdata.gis_functions import (mask_xarray_using_rio, read_raster_data, 
+                                       clip_xarraydata, reproject_xrdata, mask_xarray_using_gpdgeometry)
 from spatialdata.utils import resample_variables
 import numpy as np
 
@@ -74,7 +75,7 @@ class DataCubeBase():
         return xr_re
 
     @staticmethod
-    def mask_using_geometry(xrdata, geometry, clip = False, all_touched = True, reproject_to_raster = True):
+    def mask_using_geometry(xrdata, geometry, clip = True, all_touched = True, reproject_to_raster = True):
         """
         Mask xarray data using a geometry.
 
@@ -96,8 +97,8 @@ class DataCubeBase():
         xr.Dataset
             The masked xarray dataset.
         """
-        #return mask_xarray_using_gpdgeometry(xrdata, geometry, clip = clip, all_touched = all_touched)
-        return mask_xarray_using_rio(xrdata, geometry, drop = clip, all_touched = all_touched, reproject_to_raster = reproject_to_raster)
+        return mask_xarray_using_gpdgeometry(xrdata, geometry, clip = clip, all_touched = all_touched)
+        #return mask_xarray_using_rio(xrdata, geometry, drop = clip, all_touched = all_touched, reproject_to_raster = reproject_to_raster)
     
 
     def read_product(self, path, variable):
@@ -121,12 +122,12 @@ class DataCubeBase():
         path = self._date_path[variable]
         return read_raster_data(path, crop_extent = self._extent)
 
-    def stack_mlt_data(self, data_paths:Dict, reference_variable:str = None, verbose:bool = False, target_crs = None, ncores = 0):
+    def stack_mlt_data(self, data_paths:Dict, reference_variable:str = None, **kwargs):
         self._date_path = data_paths
         xr_variables_list = {k: self.read_product(v, k) for k,v in self._date_path.items()}
         resampled_data = resample_variables(xr_variables_list, 
-                                                    reference_variable=reference_variable, verbose = verbose, 
-                                                    target_crs = target_crs, ncores = ncores)
+                                                    reference_variable=reference_variable,
+                                                     **kwargs)
         
         return resampled_data.where(resampled_data != -9999, np.nan)
     

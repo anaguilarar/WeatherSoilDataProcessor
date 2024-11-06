@@ -533,9 +533,15 @@ def mask_xarray_using_rio(xrdata, geometry, drop = True, all_touched = True, rep
     return clipped
 
 def mask_xarray_using_gpdgeometry(xrdata, geometry, xdim_name = 'x', ydim_name = 'y', clip = True, all_touched = True):
+    import rioxarray as rio
+    #print(xrdata.rio.transform())
+    try:
+        src_transform = xrdata.rio.transform() 
+    except:
+        src_transform = xrdata.attrs['transform']
     ShapeMask = rasterio.features.geometry_mask(geometry,
                                     out_shape=(len(xrdata[ydim_name]), len(xrdata[xdim_name])),
-                                    transform=xrdata.attrs['transform'],
+                                    transform=src_transform,
                                     all_touched = all_touched,
                                     invert=True)
 

@@ -687,13 +687,12 @@ class MLTWeatherDataCube(DataCubeBase):
 
         return self.available_dates[variable], self.available_files[variable]
     
-    def multitemporal_data(self, reference_variable = 'precipitation', target_crs = None, ncores = 0):
+    def multitemporal_data(self, reference_variable = 'precipitation', ncores = 0, **kwargs):
         xr_dict = {}
         if ncores == 0:
             for d in tqdm.tqdm(self._query_dates.keys()):
                 dir_single_date_path = self.query_date(d)
-                xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, 
-                                                target_crs =target_crs)
+                xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, **kwargs)
                 #dval = datetime.strptime(d, '%Y%m%d') 
                 #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
                 xr_dict[d] = xrsingledate
@@ -702,8 +701,8 @@ class MLTWeatherDataCube(DataCubeBase):
                 with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
                     
                     future_to_day ={executor.submit(self.stack_mlt_data, self.query_date(d), 
-                                                    reference_variable, False,
-                                                target_crs): (d) for d in self._query_dates.keys()}
+                                                    reference_variable,
+                                                **kwargs): (d) for d in self._query_dates.keys()}
 
                     for future in concurrent.futures.as_completed(future_to_day):
                         date = future_to_day[future]

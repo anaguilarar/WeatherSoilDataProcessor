@@ -81,7 +81,7 @@ def stack_xrdata_variable(xrdata, xrrefence, xrefdim_name, yrefdim_name,method, 
     
 
 def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
-                       verbose = False, method: str = 'linear', target_crs = None, ncores = 0):
+                       verbose = False, method: str = 'linear', target_crs = None):
 
     
     listvariables = list(dict_xr.keys())
