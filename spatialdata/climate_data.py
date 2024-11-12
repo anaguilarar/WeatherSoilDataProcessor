@@ -82,7 +82,8 @@ def donwload_mlt_data_from_agera5(
     output_folder: str, 
     aoi_extent: List[float], 
     product: str= "sis-agrometeorological-indicators", 
-    statistic: Optional[str] = None
+    statistic: Optional[str] = None,
+    ncores: int = 10
 ) -> None:
     """
     Download multiple layers of data from AgEra5 for a given variable and time range.
@@ -147,18 +148,18 @@ def donwload_mlt_data_from_agera5(
     #        download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
     #else:
     file_path_peryear = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
         future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
     
-    for future in concurrent.futures.as_completed(future_to_year):
-        year = future_to_year[future]
-        try:
-                file_path = future.result()
-                file_path_peryear[str(year)] = file_path
-                print(f"Requested Year {year}")
-                print(f"downloaded in {file_path}")
-        except Exception as exc:
-                print(f"Request for year {year} generated an exception: {exc}")
+        for future in concurrent.futures.as_completed(future_to_year):
+            year = future_to_year[future]
+            try:
+                    file_path = future.result()
+                    file_path_peryear[str(year)] = file_path
+                    print(f"Requested Year {year}")
+                    print(f"downloaded in {file_path}")
+            except Exception as exc:
+                    print(f"Request for year {year} generated an exception: {exc}")
 
     return file_path_peryear
     
@@ -195,33 +196,49 @@ class CHIRPS_download:
         
     def _create_yearly_query(self):
         return create_yearly_query(self._initdate, self._enddate)
+    
+    def download_data_per_year(self, year, output_path, extent):
+        if not os.path.exists(os.path.join(output_path,year)): os.mkdir(os.path.join(output_path,year)) 
         
-    def download_chirps(self, extent , init_date, ending_date, output_path = None):
+        for month in self._date[year].keys():
+            stackimages = []
+            for day in self._date[year][month]:
+                urlpath = self.set_url(year, '{}.{}.{}'.format(year, month,day))
+                print(urlpath)
+                with rasterio.open(urlpath) as src:
+                    meta = src.profile
+                    masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
+                    stackimages.append(masked)
+                xrm = list_tif_2xarray(masked, mask_transform, crs=str(meta['crs']), bands_names=['precipitation'], dimsformat= 'CHW')
+                xrm.to_netcdf(os.path.join(output_path,year, 'chirps_precipitation_{}{}{}.nc'.format(year,month,day)))
+
+        return os.path.join(output_path,year)
+        
+    
+    def download_chirps(self, extent , init_date, ending_date, output_path = None, ncores = 10):
         self._initdate = init_date
         self._enddate = ending_date
         self._current_date = init_date
 
         self._date = self._create_yearly_query()
         file_path_peryear = {}
-        
+        if ncores > 0:
+    
+            with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
+                future_to_year ={executor.submit(self.download_data_per_year, year, output_path, extent): (year) for year in self._date.keys()}
+                
+                for future in concurrent.futures.as_completed(future_to_year):
+                    year = future_to_year[future]
+                    try:
+                        file_path = future.result()
+                        file_path_peryear[str(year)] = file_path
+                        print(f"Requested Year {year} \n downloaded in {file_path}")
+                    except Exception as exc:
+                        print(f"Request for year {year} generated an exception: {exc}")
 
+            return file_path_peryear
         for year in self._date.keys():
-            if not os.path.exists(os.path.join(output_path,year)):
-                os.mkdir(os.path.join(output_path,year))
-            stackpermonth = []
-            for month in self._date[year].keys():
-                stackimages = []
-                for day in self._date[year][month]:
-                    urlpath = self.set_url(year, '{}.{}.{}'.format(year, month,day))
-                    print(urlpath)
-                    with rasterio.open(urlpath) as src:
-                        meta = src.profile
-                        masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
-                        stackimages.append(masked)
-                    xrm = list_tif_2xarray(masked, mask_transform, crs=str(meta['crs']), bands_names=['precipitation'], dimsformat= 'CHW')
-                    xrm.to_netcdf(os.path.join(output_path,year, 'chirps_precipitation_{}{}{}.nc'.format(year,month,day)))
-            file_path_peryear[str(year)] = os.path.join(output_path,year)
-        return file_path_peryear
+            file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
 
 def process_file(year_path_folder, filename, date, xdim_name, ydim_name, depthdim_name):
     """
@@ -369,7 +386,7 @@ class ClimateDataDownload(object):
             os.mkdir(output_path)
         return output_path
     
-    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False):
+    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0):
         """
         Downloads weather data for the specified variables.
 
@@ -407,7 +424,7 @@ class ClimateDataDownload(object):
                                         statistic= 'tmin')
                 
             elif 'precipitation' in var:
-                file_paths = self._get_precipitation(output_path=outputpath, urlhost='chirps', mission='chirps')
+                file_paths = self._get_precipitation(output_path=outputpath, urlhost='chirps', mission='chirps', ncores = ncores)
 
             else:
                 print(f"{var} is Not implemented yet!!")
@@ -545,7 +562,7 @@ class ClimateDataDownload(object):
                                         output_folder= output_path,
                                         statistic= [""])
 
-    def _get_precipitation(self, mission = None, urlhost = None, output_path = None):
+    def _get_precipitation(self, mission = None, urlhost = None, output_path = None, ncores = 10):
         """
         Placeholder function for downloading precipitation data.
 
@@ -572,7 +589,7 @@ class ClimateDataDownload(object):
         
         if mission == 'chirps' and urlhost == 'chirps':
             chirps = CHIRPS_download()
-            return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path)
+            return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = ncores)
 
 
     def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax"):

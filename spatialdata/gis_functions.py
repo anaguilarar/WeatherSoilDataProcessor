@@ -297,6 +297,7 @@ def clip_xarraydata(xarraydata:xarray.Dataset, polygon: Polygon = None, xyxy: Li
     xarray.Dataset
         Clipped xarray dataset.
     """
+    import rioxarray as rio
     xrmetadata = xarraydata.attrs.copy()
     if xyxy is not None:
         crs = 'EPSG:4326' if xarraydata.rio.crs is None else xarraydata.rio.crs
