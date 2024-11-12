@@ -506,7 +506,7 @@ class ClimateDataDownload(object):
                 'download_path':  output_folder
             }
 
-    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None):
+    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None, ncores = 10):
         """
         function for downloading relativity_humidity data.
 
@@ -532,9 +532,9 @@ class ClimateDataDownload(object):
                                         ending_date=self._ending_date, 
                                         aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
                                         output_folder= output_path,
-                                        statistic= [""])
+                                        statistic= [""], ncores = ncores)
     
-    def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None):
+    def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None, ncores = 10):
         """
         Placeholder function for downloading solar radiation data.
 
@@ -560,7 +560,7 @@ class ClimateDataDownload(object):
                                         ending_date=self._ending_date, 
                                         aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
                                         output_folder= output_path,
-                                        statistic= [""])
+                                        statistic= [""], ncores = ncores)
 
     def _get_precipitation(self, mission = None, urlhost = None, output_path = None, ncores = 10):
         """
@@ -592,7 +592,7 @@ class ClimateDataDownload(object):
             return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = ncores)
 
 
-    def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax"):
+    def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax", ncores = 10):
         """
         Placeholder function for downloading temperature data (e.g., max or min).
 
@@ -631,7 +631,7 @@ class ClimateDataDownload(object):
                                         ending_date=self._ending_date, 
                                         aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
                                         output_folder= output_path,
-                                        statistic=strstatistic)
+                                        statistic=strstatistic, ncores = ncores)
             
 
 class MLTWeatherDataCube(DataCubeBase):
