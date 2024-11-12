@@ -41,7 +41,8 @@ def main():
         logging.info(f"-----> Download {var} from {info}")
         climatedata.download_weather_information({var:info}, 
                                                     suffix_output_folder=config.GENERAL.suffix, 
-                                                    export_as_netcdf=config.GENERAL.export_as_netcdf)
+                                                    export_as_netcdf=config.GENERAL.export_as_netcdf,
+                                                    ncores = config.GENERAL.ncores)
             
     logging.info("Data download completed!")
 
