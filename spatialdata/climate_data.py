@@ -237,8 +237,9 @@ class CHIRPS_download:
                         print(f"Request for year {year} generated an exception: {exc}")
 
             return file_path_peryear
-        for year in self._date.keys():
-            file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
+        else:
+            for year in self._date.keys():
+                file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
 
 def process_file(year_path_folder, filename, date, xdim_name, ydim_name, depthdim_name):
     """
