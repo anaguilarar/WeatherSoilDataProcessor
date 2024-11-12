@@ -19,6 +19,11 @@ WEATHER:
     temperature_tmin:
       mission: agera5
       source: agera5
+    
+    relative_humidity:
+      mission: agera5
+      source: agera5
+      time: "12_00"
 
 SPATIAL_INFO:
   spatial_file: 'data/country.shp'
@@ -27,6 +32,7 @@ SPATIAL_INFO:
 GENERAL:
   suffix: 'hnd'
   export_as_netcdf: True
+  ncores: 10
 
 PATHS:
   output_path: "weather/"
