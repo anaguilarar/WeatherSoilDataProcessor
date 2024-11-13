@@ -75,7 +75,7 @@ class DataCubeBase():
         return xr_re
 
     @staticmethod
-    def mask_using_geometry(xrdata, geometry, clip = True, all_touched = True, reproject_to_raster = True):
+    def mask_using_geometry(xrdata, geometry, clip = True, all_touched = True, reproject_to_raster = True, userio = False):
         """
         Mask xarray data using a geometry.
 
@@ -97,8 +97,11 @@ class DataCubeBase():
         xr.Dataset
             The masked xarray dataset.
         """
-        return mask_xarray_using_gpdgeometry(xrdata, geometry, clip = clip, all_touched = all_touched)
-        #return mask_xarray_using_rio(xrdata, geometry, drop = clip, all_touched = all_touched, reproject_to_raster = reproject_to_raster)
+        if userio:
+            return mask_xarray_using_rio(xrdata, geometry, drop = clip, all_touched = all_touched, reproject_to_raster = reproject_to_raster)
+        else:
+            return mask_xarray_using_gpdgeometry(xrdata, geometry, clip = clip, all_touched = all_touched) # this is faster for multiple dimensions
+        
     
 
     def read_product(self, path, variable):

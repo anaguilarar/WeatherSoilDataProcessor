@@ -156,8 +156,7 @@ def donwload_mlt_data_from_agera5(
             try:
                     file_path = future.result()
                     file_path_peryear[str(year)] = file_path
-                    print(f"Requested Year {year}")
-                    print(f"downloaded in {file_path}")
+                    print(f"Requested Year {year} \n downloaded in {file_path}")
             except Exception as exc:
                     print(f"Request for year {year} generated an exception: {exc}")
 
@@ -235,12 +234,11 @@ class CHIRPS_download:
                         print(f"Requested Year {year} \n downloaded in {file_path}")
                     except Exception as exc:
                         print(f"Request for year {year} generated an exception: {exc}")
-
-            return file_path_peryear
         else:
             for year in self._date.keys():
                 file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
-
+                
+        return file_path_peryear
 def process_file(year_path_folder, filename, date, xdim_name, ydim_name, depthdim_name):
     """
     Helper function to read and process a single NetCDF file.

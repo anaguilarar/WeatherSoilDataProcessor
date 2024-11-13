@@ -191,10 +191,10 @@ class SoilGridDataDonwload():
 class SoilDataCube(DataCubeBase):
     
     @staticmethod
-    def mask_mldata(xr_dict,geometry, clip = True):
+    def mask_mldata(xr_dict,geometry, clip = True, userio = False):
         xrdict_masked = {}
         for d, v in tqdm.tqdm(xr_dict.items()):
-            xrdict_masked[d] = DataCubeBase.mask_using_geometry(v,geometry, clip = clip)
+            xrdict_masked[d] = DataCubeBase.mask_using_geometry(v,geometry, clip = clip, userio = userio)
         
         return xrdict_masked
     

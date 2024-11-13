@@ -7,24 +7,24 @@ import matplotlib.pyplot as plt
 from typing import List, Tuple, Optional, Dict
 
 def plot_multichanels(data: np.ndarray, 
-                       num_rows: int = 2, 
-                       num_columns: int = 2, 
-                       figsize: Tuple[int, int] = (10, 10),
-                       label_name: Optional[str] = None,
-                       chanels_names: Optional[List[str]] = None, 
-                       cmap: str = 'viridis', 
-                       fontsize: int = 12, 
-                       legfontsize: int = 15,
-                       legtickssize: int = 15,
-                       colorbar: bool = True, 
-                       vmin: Optional[float] = None, 
-                       vmax: Optional[float] = None,
-                       newlegendticks: Optional[List[str]] = None,
-                       fontname: str = "Arial",
-                       invertaxis: bool = True,
-                       colorbar_orientation = 'vertical') -> Tuple[plt.Figure, np.ndarray]:
+                    num_rows: int = 2, 
+                    num_columns: int = 2, 
+                    figsize: Tuple[int, int] = (10, 10),
+                    label_name: Optional[str] = None,
+                    chanels_names: Optional[List[str]] = None, 
+                    cmap: str = 'viridis', 
+                    fontsize: int = 12, 
+                    legfontsize: int = 15,
+                    legtickssize: int = 15,
+                    colorbar: bool = True, 
+                    vmin: Optional[float] = None, 
+                    vmax: Optional[float] = None,
+                    newlegendticks: Optional[List[str]] = None,
+                    fontname: str = "Arial",
+                    invertaxis: bool = True,
+                    colorbar_orientation = 'vertical') -> Tuple[plt.Figure, np.ndarray]:
     """
-    Creates a figure showing one or multiple channels of data with extensive customization options.
+    Creates a figure showing one or multiple channels.
 
     Parameters
     ----------

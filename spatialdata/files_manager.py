@@ -348,7 +348,7 @@ class SoilFolderManager:
         for var in self.variables:
             paths_dict[var] = self.variable_path(var, units_string = units_string)
         
-        depths_available = [self.extract_detph(v, k, units = 'cm') for k,v in paths_dict.items()]
+        depths_available = [self.extract_detph(v, k, units = units_string) for k,v in paths_dict.items()]
         self.depths = self._sort_depths(np.unique(depths_available))[0]
         
         if by == 'depth':

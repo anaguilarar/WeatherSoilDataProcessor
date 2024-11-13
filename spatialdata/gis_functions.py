@@ -157,8 +157,7 @@ def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
     """
     variables = list(xrsource.data_vars.keys())
     assert len(xrsource.sizes.keys())<3, "not supported 3 dimensions yet" 
-    print(xrsource.rio.crs)
-    print(xrsource)
+
     #
     tr = xrsource.rio.transform() if xrsource.rio.transform() else transform_fromxy(
         x =xrsource[xdim_name].values, y = xrsource[ydim_name].values)[0]
@@ -576,12 +575,12 @@ def read_raster_data(path, crop_extent: List[float] = None, xdim_name = 'x', ydi
 
 
 def re_scale_xarray(xrdata, scale_factor, xdim_name = 'x', ydim_name = 'y', method ='nearest' ):
-    height, width = xrdata[list(xrdata.data_vars.keys())[0]].shape
-    newheight = int(height*scale_factor) 
-    newwidth = int(width*scale_factor)
-
     oldx = xrdata[xdim_name].values
     oldy = xrdata[ydim_name].values
+    
+    height, width = len(np.unique(oldy)), len(np.unique(oldx))
+    newheight = int(height*scale_factor) 
+    newwidth = int(width*scale_factor)
 
     (newx, newy), new_transform = get_new_coords_for_newshape(oldx, oldy, newheight,newwidth)
 
