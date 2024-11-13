@@ -64,29 +64,11 @@ def from_weather_to_dssat(xrdata, groupby: str = None, date_name ='date',
     
 
     xrdata = check_weatherxr_scales(xrdata)
-    dfdataper_date = []
     #weather_df = xrdata.to_dataframe().reset_index().dropna()
     
-    if ncores == 0:
-        for i, d in tqdm(enumerate(np.unique(xrdata[date_name].values))):
-            ddf = summarize_dataframe(d, xrdata.isel({date_name:i}), weatherdatavars, groupby)
-            dfdataper_date.append(ddf)
-    else:
-        with tqdm(total=len(np.unique(xrdata[date_name].values))) as pbar:
-            with concurrent.futures.ProcessPoolExecutor(max_workers=ncores) as executor:
-                future_to_day ={executor.submit(summarize_dataframe, d, xrdata.isel({date_name:i}), weatherdatavars, groupby): (d) for i, d in enumerate(np.unique(xrdata[date_name].values))}
-                for future in concurrent.futures.as_completed(future_to_day):
-                    date = future_to_day[future]
-                    try:
-                            rs = future.result()
-                            dfdataper_date.append(rs)
-                            
-                    except Exception as exc:
-                            print(f"Request for year {date} generated an exception: {exc}")
-                    pbar.update(1)
+    ddf = xrdata.to_dataframe().reset_index().dropna()
+    weather_df = ddf.groupby([groupby, date_name], dropna = True).agg(weatherdatavars).reset_index()
 
-
-    weather_df = pd.concat(dfdataper_date)
     weather_df = weather_df.rename(columns = changenames)
     
     parmasdssat = {k:k for k,v in params_df_names.items()}
