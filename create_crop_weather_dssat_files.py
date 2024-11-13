@@ -115,7 +115,7 @@ def main():
     """
     Main function to process weather and soil data cubes and convert them into DSSAT files.
     """
-
+    nanvalue = 3.4028235e+38
     logging.info("DSSAT files processing")
     args = parse_args()
 
@@ -166,80 +166,77 @@ def main():
         soil_datacube_m = SoilDataCube.mask_mldata(soil_datacube,subset.geometry, userio = True)
         print("==> weather")
         weather_datacube_m = mask_xarray_using_rio(weather_datacube_mrs.copy(), subset.geometry)
-
+        if weather_datacube_m is None: continue
+        weather_datacube_m = weather_datacube_m.where(weather_datacube_m<nanvalue, np.nan)
 
         ## 
         scale_factor = config.WEATHER.scale_factor ## factor for dowsampling
         logging.info("  Rescaling")
         # weaather rescale
-        weather_datacube_r = {}
-        for i,t in tqdm(enumerate(weather_datacube_m.date.values)):
-            t = np.datetime_as_string(t,unit = 'D').replace('-','')
-            weather_datacube_r[t] = re_scale_xarray(weather_datacube_m.isel(date = i), 
-                                                        scale_factor= scale_factor)
-            
-        weather_datacube_r = create_dimension(weather_datacube_r)
+        weather_datacube_r= re_scale_xarray(weather_datacube_m, scale_factor= scale_factor)
         # soil rescale
         xr_reference = weather_datacube_r.isel(date = 1)
-
-        soil_datacube_r = {}
-        for k,v in tqdm(soil_datacube_m.items()):
-            soil_datacube_r[k] = resample_xarray(v, xrreference=xr_reference)
+        soil_datacube_r = {k: resample_xarray(v, xrreference=xr_reference) for k,v in tqdm(soil_datacube_m.items())}
 
         ## if buffer was applied remask after resacle
         if bufferapplied:
+            subset = gdf.loc[gdf[config.ROI.roi_column] == roi_name]
             soil_datacube_r = SoilDataCube.mask_mldata(soil_datacube_r,subset.geometry, userio = True)
             weather_datacube_r = mask_xarray_using_rio(weather_datacube_r, subset.geometry)
-            weather_datacube_r = weather_datacube_r.where(weather_datacube_r<1.79769313e+307, np.nan)
+            weather_datacube_r = weather_datacube_r.where(weather_datacube_r<nanvalue, np.nan)
+
+        datainweather = all(all(np.isnan(np.unique(weather_datacube_r.isel(date = 1)[var].values))) for var in list(weather_datacube_r.data_vars.keys()))
+        datainsoil = not all(np.isnan(np.unique(soil_datacube_r[list(soil_datacube_r.keys())[0]][config.SOIL.reference_variable].values)))
+
+        if ( datainweather and datainsoil):
             
-        logging.info("  Grouping")
-        soil_datacube_rmrt = {}
+            logging.info("  Grouping")
+            soil_datacube_rmrt = {}
 
-        for k,v in soil_datacube_r.items():
-            sand = v.sand.values*0.1 if np.nanmax(v.sand.values) > 300 else v.sand.values
-            clay = v.clay.values*0.1 if np.nanmax(v.clay.values) > 300 else v.clay.values
-            texturemap = find_soil_textural_class_in_nparray(sand, clay).astype(float)
-            texturemap[texturemap == 0] = np.nan
-            soil_datacube_rmrt[k] = add_2dlayer_toxarrayr(texturemap, v, variable_name=config.GROUPBY.variable)
+            for k,v in soil_datacube_r.items():
+                sand = v.sand.values*0.1 if np.nanmax(v.sand.values) > 300 else v.sand.values
+                clay = v.clay.values*0.1 if np.nanmax(v.clay.values) > 300 else v.clay.values
+                texturemap = find_soil_textural_class_in_nparray(sand, clay).astype(float)
+                texturemap[texturemap == 0] = np.nan
+                soil_datacube_rmrt[k] = add_2dlayer_toxarrayr(texturemap, v, variable_name=config.GROUPBY.variable)
 
 
-        ## merge datasets
-        soilref = soil_datacube_rmrt['0-5']
-        weatherdatavars = list(weather_datacube_r.data_vars.keys())
-        weather_datacube_mrs = xarray.merge([weather_datacube_r,soilref])[weatherdatavars+ ['texture']]
+            ## merge datasets
+            soilref = soil_datacube_rmrt['0-5']
+            weatherdatavars = list(weather_datacube_r.data_vars.keys())
+            weather_datacube_mrs = xarray.merge([weather_datacube_r,soilref])[weatherdatavars+ [config.GROUPBY.variable]]
 
-        
-        
-        ### DSSAT FILES
-                
-        soil_datacube_mrs = []
-        for ks, vs in soil_datacube_rmrt.items():
-            xrtemp = vs.expand_dims(dim = ['depth'])
-            xrtemp['depth'] = [ks]
-            soil_datacube_mrs.append(xrtemp)
+            
+            ### DSSAT FILES
+                    
+            soil_datacube_mrs = []
+            for ks, vs in soil_datacube_rmrt.items():
+                xrtemp = vs.expand_dims(dim = ['depth'])
+                xrtemp['depth'] = [ks]
+                soil_datacube_mrs.append(xrtemp)
 
-        soil_datacube_mrs = xarray.concat(soil_datacube_mrs, dim = 'depth')
-        logging.info(f"  creating DSSAT soil file in {output}")
+            soil_datacube_mrs = xarray.concat(soil_datacube_mrs, dim = 'depth')
+            logging.info(f"  creating DSSAT soil file in {output}")
 
-        soil_df = from_soil_to_dssat(soil_datacube_mrs, groupby=config.GROUPBY.variable, outputpath=output, outputfn='SOIL'+roi_name, codes=TEXTURE_CLASSES, country = config.GENERAL.country.upper(),site = roi_name)
-        soil_df.to_csv(os.path.join(output,f'SOIL{roi_name}.csv'))
-        #soil_datacube_mrs.to_netcdf(os.path.join(output,f'SOIL{roi_name}.nc'))
-        print(soil_datacube_mrs.data_vars)
+            soil_df = from_soil_to_dssat(soil_datacube_mrs, groupby=config.GROUPBY.variable, outputpath=output, outputfn='SOIL'+roi_name, codes=TEXTURE_CLASSES, country = config.GENERAL.country.upper(),site = roi_name)
+            soil_df.to_csv(os.path.join(output,f'SOIL{roi_name}.csv'))
+            #soil_datacube_mrs.to_netcdf(os.path.join(output,f'SOIL{roi_name}.nc'))
+            print(soil_datacube_mrs.data_vars)
 
-        logging.info(f"  creating DSSAT weather file in {output}")
-        from_weather_to_dssat(copy.deepcopy(weather_datacube_mrs), date_name = 'date', 
-                            groupby = config.GROUPBY.variable, 
-                            params_df_names=config.DSSAT.variable_names,
-                            outputpath=output, outputfn = 'WHTE'+roi_name, codes=TEXTURE_CLASSES, ncores=config.GENERAL.ncores)
-        print(len(weather_datacube_mrs.date.values))
-        vars_metric = {}
+            logging.info(f"  creating DSSAT weather file in {output}")
+            from_weather_to_dssat(copy.deepcopy(weather_datacube_mrs), date_name = 'date', 
+                                groupby = config.GROUPBY.variable, 
+                                params_df_names=config.DSSAT.variable_names,
+                                outputpath=output, outputfn = 'WHTE'+roi_name, codes=TEXTURE_CLASSES, ncores=config.GENERAL.ncores)
+            print(len(weather_datacube_mrs.date.values))
+            vars_metric = {}
 
-        for i in weather_datacube_mrs.data_vars.keys():
-            vars_metric.update({i: 'mean'})
-        vars_metric.pop(config.GROUPBY.variable)
-        df = check_weatherxr_scales(copy.deepcopy(weather_datacube_mrs)).to_dataframe().dropna().reset_index().groupby([config.GROUPBY.variable,'date']).agg(vars_metric).reset_index()
+            for i in weather_datacube_mrs.data_vars.keys():
+                vars_metric.update({i: 'mean'})
+            vars_metric.pop(config.GROUPBY.variable)
+            df = check_weatherxr_scales(copy.deepcopy(weather_datacube_mrs)).to_dataframe().dropna().reset_index().groupby([config.GROUPBY.variable,'date']).agg(vars_metric).reset_index()
 
-        df.to_csv(os.path.join(output,f'WHTE{roi_name}.csv'))
+            df.to_csv(os.path.join(output,f'WHTE{roi_name}.csv'))
 
 
 if __name__ == "__main__":
