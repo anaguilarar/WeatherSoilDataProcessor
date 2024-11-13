@@ -516,7 +516,25 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
     return multi_xarray
 
 
-def mask_xarray_using_rio(xrdata, geometry, drop = True, all_touched = True, reproject_to_raster = True):
+def mask_xarray_using_rio(xrdata: xarray.DataArray,
+    geometry: gpd.GeoDataFrame,
+    drop: bool = True,
+    all_touched: bool = True,
+    reproject_to_raster: bool = True) -> xarray.DataArray:
+    """
+    Masks an xarray object based on a provided geometry using rioxarray.
+    
+    Parameters:
+    - xrdata (xarray.DataArray): The xarray object to be masked.
+    - geometry (GeoDataFrame or GeoSeries): The geometry to use for masking.
+    - drop (bool): If True, drops pixels outside the mask.
+    - all_touched (bool): If True, includes all pixels touched by the geometry.
+    - reproject_to_raster (bool): If True, reprojects the geometry to match xrdata's CRS.
+
+    Returns:
+    - xarray.DataArray: Masked xarray object.
+    """
+    
     import rioxarray as rio
 
     if reproject_to_raster:
@@ -527,10 +545,13 @@ def mask_xarray_using_rio(xrdata, geometry, drop = True, all_touched = True, rep
     xrdata = xrdata.rio.write_crs(xrdata.rio.crs)
 
     x1, y1, x2, y2 = geometry.total_bounds
-    sub = xrdata.rio.clip_box(minx=x1, miny=y1, maxx=x2, maxy=y2)
-    clipped = sub.rio.clip(geometry.geometry.apply(mapping), geometry.crs, drop=drop, all_touched=all_touched)
-
-    return clipped
+    try:
+        sub = xrdata.rio.clip_box(minx=x1, miny=y1, maxx=x2, maxy=y2)
+        clipped = sub.rio.clip(geometry.geometry.apply(mapping), geometry.crs, drop=drop, all_touched=all_touched)
+        return clipped
+    except Exception as e:
+        print(f"Error during masking operation: {e}")
+        return None
 
 def mask_xarray_using_gpdgeometry(xrdata, geometry, xdim_name = 'x', ydim_name = 'y', clip = True, all_touched = True):
     import rioxarray as rio
