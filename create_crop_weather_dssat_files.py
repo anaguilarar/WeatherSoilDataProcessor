@@ -11,9 +11,11 @@ from datetime import datetime
 from omegaconf import OmegaConf
 from tqdm import tqdm
 import glob
+from unidecode import unidecode
 
 from spatialdata.climate_data import MLTWeatherDataCube
 from spatialdata.files_manager import IntervalFolderManager, SoilFolderManager
+from spatialdata.gis_functions import mask_xarray_using_gpdgeometry, mask_xarray_using_rio
 from spatialdata.gis_functions import get_boundaries_from_path, reproject_xrdata, re_scale_xarray, resample_xarray, add_2dlayer_toxarrayr
 from spatialdata.soil_data import (TEXTURE_CLASSES,SoilDataCube, find_soil_textural_class_in_nparray)
 
@@ -27,6 +29,18 @@ except:
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+def create_dimension(xrdata_dict, newdim_name = 'date'):
+    weather_datacube_mrs = []
+    for k,v in tqdm(xrdata_dict.items()):
+        xrtemp = v.expand_dims(dim = [newdim_name])
+        xrtemp['date'] = [k]
+        weather_datacube_mrs.append(xrtemp)
+        
+    weather_datacube_mrs = xarray.concat(weather_datacube_mrs, dim = newdim_name)
+    weather_datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
+    return weather_datacube_mrs
 
 
 def get_weather_datacube(config):
@@ -110,18 +124,21 @@ def main():
 
     logging.info(f"Reading configuration from {args.config}")
     weather_datacube = get_weather_datacube(config)
+    weather_datacube_mrs = create_dimension(weather_datacube)
     logging.info("Weather data cube created from {} to {}".format(config.WEATHER.starting_date,config.WEATHER.ending_date))
     soil_datacube = get_soil_datacube(config)
     logging.info("Soil data cube created with the following variables: {}".format(config.SOIL.variables))
 
-
+    # reproject to planar coordinate system
     crs = config.GENERAL.crs_reference
-    #weather_datacube = {k: reproject_xrdata(v,target_crs=crs) for k, v in weather_datacube.items()}
+    crs = 'ESRI:54052' ## same as soilgrid project
+    #crs = 'EPSG:4326'
+    weather_datacube_mrs= weather_datacube_mrs.rio.write_crs('EPSG:4326').rio.reproject(crs)
     soil_datacube = {k: reproject_xrdata(v,target_crs=crs) for k, v in soil_datacube.items()}
-    
+
     gdf = gpd.read_file(config.ROI.path)
     rois = gdf[config.ROI.roi_column].values
-
+    ## extract data for each roi
     for roi_name in rois:
         output = os.path.join(config.PATHS.output_path, roi_name )
         logging.info("----- Processing {}".format(roi_name))
@@ -137,11 +154,18 @@ def main():
             
         
         subset = gdf.loc[gdf[config.ROI.roi_column] == roi_name]
+        area = subset.area.values[0] / (1000*1000)
+        bufferapplied = area < 15
+        if bufferapplied:
+            narea = 15 - area
+            subset = subset.buffer((narea*100))
+            
+        
         logging.info("  Masking")
         print("==> soil")
-        soil_datacube_m = SoilDataCube.mask_mldata(soil_datacube,subset.geometry)
+        soil_datacube_m = SoilDataCube.mask_mldata(soil_datacube,subset.geometry, userio = True)
         print("==> weather")
-        weather_datacube_m = MLTWeatherDataCube.mask_mldata(weather_datacube,subset.geometry, ncores=config.GENERAL.ncores)
+        weather_datacube_m = mask_xarray_using_rio(weather_datacube_mrs.copy(), subset.geometry)
 
 
         ## 
@@ -149,16 +173,25 @@ def main():
         logging.info("  Rescaling")
         # weaather rescale
         weather_datacube_r = {}
-        for k,v in tqdm(weather_datacube_m.items()):
-            weather_datacube_r[k] = re_scale_xarray(v, scale_factor= scale_factor)
-
+        for i,t in tqdm(enumerate(weather_datacube_m.date.values)):
+            t = np.datetime_as_string(t,unit = 'D').replace('-','')
+            weather_datacube_r[t] = re_scale_xarray(weather_datacube_m.isel(date = i), 
+                                                        scale_factor= scale_factor)
+            
+        weather_datacube_r = create_dimension(weather_datacube_r)
         # soil rescale
-        xr_reference = weather_datacube_r[list(weather_datacube_r.keys())[0]]
+        xr_reference = weather_datacube_r.isel(date = 1)
 
         soil_datacube_r = {}
         for k,v in tqdm(soil_datacube_m.items()):
             soil_datacube_r[k] = resample_xarray(v, xrreference=xr_reference)
 
+        ## if buffer was applied remask after resacle
+        if bufferapplied:
+            soil_datacube_r = SoilDataCube.mask_mldata(soil_datacube_r,subset.geometry, userio = True)
+            weather_datacube_r = mask_xarray_using_rio(weather_datacube_r, subset.geometry)
+            weather_datacube_r = weather_datacube_r.where(weather_datacube_r<1.79769313e+307, np.nan)
+            
         logging.info("  Grouping")
         soil_datacube_rmrt = {}
 
@@ -170,21 +203,10 @@ def main():
             soil_datacube_rmrt[k] = add_2dlayer_toxarrayr(texturemap, v, variable_name=config.GROUPBY.variable)
 
 
-        soilref = soil_datacube_rmrt[config.SOIL.depth_refernce]
-        # getting datavars
-        weatherdatavars = list(weather_datacube_r[list(weather_datacube_r.keys())[0]].data_vars.keys())
-
-        weather_datacube_mrs = []
-        for k,v in tqdm(weather_datacube_r.items()):
-            xrtemp = xarray.merge([v,soilref])[weatherdatavars+ [config.GROUPBY.variable]]
-            xrtemp = xrtemp.expand_dims(dim = ['date'])
-            xrtemp['date'] = [k]
-            weather_datacube_mrs.append(xrtemp)
-        weather_datacube_mrs = xarray.concat(weather_datacube_mrs, dim = 'date')
-
-        weather_datacube_mrs['date'] = [datetime.strptime(i, "%Y%m%d") for i in list(weather_datacube_r.keys())]
-
-        
+        ## merge datasets
+        soilref = soil_datacube_rmrt['0-5']
+        weatherdatavars = list(weather_datacube_r.data_vars.keys())
+        weather_datacube_mrs = xarray.merge([weather_datacube_r,soilref])[weatherdatavars+ ['texture']]
 
         
         
