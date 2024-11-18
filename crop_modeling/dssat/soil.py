@@ -1,12 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
+from DSSATTools.soil import SoilProfile, SoilLayer
+from typing import List
 
 from .files_reading import section_indices, delimitate_header_indices
 from ..soil_funs import find_soil_textural_class, calculate_sks, slu1
 
-from DSSATTools.soil import SoilProfile, SoilLayer
-from typing import List
             
 class DSSATSoil_base():
     """
@@ -234,17 +234,17 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
             self._dict_names = dict_names
         else:
             self._dict_names = {'clay': ['SLCL', 0.1],
-         'silt': ['SLSI', 0.1],
-         'nitrogen': ['SLNI', 0.01],
-         'bdod': ['SBDM', 0.01],
-         'cfvo': ['SLCF', 0.01],
-         'phh2o': ['SLHW', 0.1],
-         'soc': ['SLOC', 0.01],
-         'cec': ['SCEC', 0.1],
-         'wv1500': ['SLLL',0.001],
-         'wv0033': ['SDUL',0.001],
-         'wv0010': ['SSAT',0.001]}
-        
+                                'silt': ['SLSI', 0.1],
+                                'nitrogen': ['SLNI', 0.01],
+                                'bdod': ['SBDM', 0.01],
+                                'cfvo': ['SLCF', 0.01],
+                                'phh2o': ['SLHW', 0.1],
+                                'soc': ['SLOC', 0.01],
+                                'cec': ['SCEC', 0.1],
+                                'wv1500': ['SLLL',0.001],
+                                'wv0033': ['SDUL',0.001],
+                                'wv0010': ['SSAT',0.001]}
+                                
         return self._dict_names
 
     def from_df_to_dssat_list(self, df: pd.DataFrame, depth_col_name: str = 'depth') -> list:
