@@ -544,10 +544,10 @@ def mask_xarray_using_rio(xrdata: xarray.DataArray,
     
     xrdata = xrdata.rio.write_crs(xrdata.rio.crs)
 
-    x1, y1, x2, y2 = geometry.total_bounds
+    #x1, y1, x2, y2 = geometry.total_bounds
     try:
-        sub = xrdata.rio.clip_box(minx=x1, miny=y1, maxx=x2, maxy=y2)
-        clipped = sub.rio.clip(geometry.geometry.apply(mapping), geometry.crs, drop=drop, all_touched=all_touched)
+        #sub = xrdata.rio.clip_box(minx=x1, miny=y1, maxx=x2, maxy=y2)
+        clipped = xrdata.rio.clip(geometry.geometry.apply(mapping), geometry.crs, drop=drop, all_touched=all_touched)
         return clipped
     except Exception as e:
         print(f"Error during masking operation: {e}")
@@ -598,8 +598,10 @@ def read_raster_data(path, crop_extent: List[float] = None, xdim_name = 'x', ydi
 def re_scale_xarray(xrdata, scale_factor, xdim_name = 'x', ydim_name = 'y', method ='nearest' ):
     oldx = xrdata[xdim_name].values
     oldy = xrdata[ydim_name].values
-    
-    height, width = len(np.unique(oldy)), len(np.unique(oldx))
+    oldx = [oldx[0]] + [oldx[0] + xrdata.rio.transform()[0]] if(len(oldx) == 1) else oldx
+    oldy = [oldy[0]] + [oldy[0] + xrdata.rio.transform()[4]] if(len(oldy) == 1) else oldy
+
+    height, width = len(np.unique(xrdata[ydim_name].values)), len(np.unique(xrdata[xdim_name].values))
     newheight = int(height*scale_factor) 
     newwidth = int(width*scale_factor)
 
