@@ -1,6 +1,7 @@
 
 import numpy as np
-from .dssat_transform import DSSATSoil_fromSOILGRIDS, DSSAT_Weather
+from .dssat.weather import DSSAT_Weather
+from .dssat.soil import DSSATSoil_fromSOILGRIDS
 
 from tqdm import tqdm
 import os
@@ -98,7 +99,8 @@ def check_percentage(value):
 
 
 def from_soil_to_dssat(xrdata, groupby: str = None, depth_name ='depth', 
-                        country = None,site = None, outputpath = None, outputfn = None, codes = None):
+                        country = None,site = None, outputpath = None, outputfn = None, 
+                        codes = None, soil_id = None):
     
     soildatavars = get_variables_to_summarize(xrdata, depth_name)
     soildf = xrdata.to_dataframe().reset_index().dropna()
@@ -127,7 +129,8 @@ def from_soil_to_dssat(xrdata, groupby: str = None, depth_name ='depth',
             long = subset.loc[subset[depth_name] == firstdepth[0]].x.values.mean()
             lat = subset.loc[subset[depth_name] == firstdepth[0]].y.values.mean()
         
-            ddsat_soilgrid = DSSATSoil_fromSOILGRIDS(long = long, lat = lat, sand = sand, clay = clay, country = country, site = site)
+            ddsat_soilgrid = DSSATSoil_fromSOILGRIDS(long = long, lat = lat, sand = sand, clay = clay, country = country,
+                                                    site = site, id = soil_id)
             
             ddsat_soilgrid.add_soil_layers_from_df(subset)
 

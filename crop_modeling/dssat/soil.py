@@ -1,12 +1,138 @@
-
-from .soil_funs import find_soil_textural_class, calculate_sks, slu1
-import pandas as pd
-from DSSATTools.weather import Weather
-from DSSATTools.soil import SoilProfile, SoilLayer
-
+import os
 import numpy as np
+import pandas as pd
 
+from .files_reading import section_indices, delimitate_header_indices
+from ..soil_funs import find_soil_textural_class, calculate_sks, slu1
 
+from DSSATTools.soil import SoilProfile, SoilLayer
+from typing import List
+            
+class DSSATSoil_base():
+    """
+    A utility class for handling DSSAT soil files.
+
+    This class provides static methods to read soil files, extract soil IDs, 
+    check and modify soil IDs, and parse soil properties into a DataFrame.
+    """
+    
+    def __init__(self) -> None:
+        pass
+    
+    @staticmethod
+    def open_file(path: str) -> List[str]:
+        """
+        Reads a text file and returns its lines as a list.
+
+        Parameters
+        ----------
+        path : str
+            Path to the DSSAT soil file.
+
+        Returns
+        -------
+        List[str]
+            A list of lines in the file.
+
+        Raises
+        ------
+        AssertionError
+            If the file does not exist at the specified path.
+        """
+        
+        assert os.path.exists(path)
+        with open(path, 'r', encoding="utf-8") as fn:
+            lines = fn.readlines()
+            
+        return lines
+    
+    @staticmethod
+    def get_soil_id(path: str) -> str:
+        """
+        Extracts the soil ID from a DSSAT soil file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the DSSAT soil file.
+
+        Returns
+        -------
+        str
+            The extracted soil ID.
+        """
+        lines = DSSATSoil_base.open_file(path)
+        
+        infoindices = list(section_indices(lines, pattern='*'))
+        line = lines[infoindices[1]]
+        return line.strip().split(':')[0][1:].split('  ')[0]
+    
+    @staticmethod
+    def check_id(path: str) -> str:
+        """
+        Checks and modifies the soil ID in a DSSAT soil file if its length exceeds 8 characters.
+
+        If the ID is too long, it replaces the ID with an string and updates the file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the DSSAT soil file.
+
+        Returns
+        -------
+        str
+            The updated or existing soil ID.
+        """
+        
+        soilid = DSSATSoil_base.get_soil_id(path)
+        if len(soilid) > 8:
+            lines = DSSATSoil_base.open_file(path)
+            infoindices = list(section_indices(lines, pattern='*'))
+            line = lines[infoindices[1]]
+            lines[infoindices[1]] =line.replace(soilid,'1')
+            with open(path, 'w') as file:
+                file.writelines( lines )
+            soilid = '1'
+            
+        return soilid
+    
+    @staticmethod
+    def soil_properties_as_df(path: str) -> pd.DataFrame:
+        """
+        Reads soil properties from a DSSAT soil file and returns them as a DataFrame.
+
+        The soil properties are typically located in the last section of the file.
+
+        Parameters
+        ----------
+        path : str
+            Path to the DSSAT soil file.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame containing soil properties.
+
+        """
+        lines = DSSATSoil_base.open_file(path)
+        section_ids = list(section_indices(lines))
+        lastsection = section_ids[-1]
+        # the soil table is in the last section
+        section_header_str = lines[lastsection]
+        header_indices = delimitate_header_indices(section_header_str)
+        
+        data_rows = []
+        for section_data_str in lines[(lastsection+1):len(lines)]:
+            data_rows.append([section_data_str[i:j].strip()
+                        for i, j in header_indices])
+        
+        sec_header = section_header_str.split()
+        return pd.DataFrame(data=data_rows, columns=sec_header).drop('@', axis = 1)
+    
+    
+    
+    
 class DSSATSoil_fromSOILGRIDS(SoilProfile):
     """
     DSSAT Soil profile class built from SoilGrids data.
@@ -225,10 +351,10 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         self.description = "ISRIC V2 {} {}".format(self.SUM_TEXTURE_CLASSES[self._pos_text],
                                                                 self._texture) if self.description is None else self.description
         
-        self.country = kwargs.get('country', 'COL')
-        self.site = kwargs.get('site', 'CAL')
-        self.lat = kwargs.get('lat', -99)
-        self.lon = kwargs.get('lon', -99)
+        self.country = kwargs.get('country', 'COL')[:3].upper()
+        self.site = kwargs.get('site', 'CAL')[:3].upper()
+        self.lat = np.round(kwargs.get('lat', -99), 2)
+        self.lon = np.round(kwargs.get('lon', -99), 2)
 
         self.id = kwargs.get('id', None)
         self.id = f'{self.country}-{self.site}'.replace(' ', '') if self.id is None else self.id
@@ -252,126 +378,3 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         self.soil_general_soilline_parameters()
         self.soilgrid_dict()
         self.set_general_location_parameters(**kwargs)
-
-
-def monthly_amplitude(c):
-    d = {}
-    d['avgm'] = ((c.iloc[:,0] + c.iloc[:,1])/2).mean()
-    return pd.Series(d, index = ['avgm'])
-
-class DSSAT_Weather(Weather):
-    """
-    A class representing DSSAT Weather data.
-
-    This class is responsible for processing weather data in the format expected by the DSSAT model.
-    It takes a DataFrame, renames columns, calculates long-term average temperature (TAV), 
-    and temperature amplitude (AMP), and initializes the Weather class.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        The DataFrame containing weather data.
-    column_names : dict
-        Dictionary mapping DSSAT column names to DataFrame column names.
-    **kwargs : dict, optional
-        Additional parameters to pass to the parent class `Weather`.
-
-    Attributes
-    ----------
-    _df : pd.DataFrame
-        The DataFrame with renamed columns and selected weather data.
-    """
-
-
-
-    def __init__(self, df:  pd.DataFrame, column_names: dict, **kwargs):
-        """
-        Initialize the DSSATWeather class.
-
-        This method renames the columns of the input DataFrame using the `column_names` mapping, 
-        calculates the mean longitude and latitude, computes temperature amplitude (AMP) 
-        and long-term average temperature (TAV), and initializes the parent Weather class.
-
-        Parameters
-        ----------
-        df : pd.DataFrame
-            DataFrame containing weather data.
-        column_names : dict
-            Dictionary where keys are DSSAT weather parameter names, 
-            and values are the corresponding DataFrame column names.
-        **kwargs : dict, optional
-            Additional parameters passed to the parent class `Weather`.
-        """
-        # Reverse column_names dictionary
-        column_names = {v:k for k, v in column_names.items()}
-        self._df = df.rename(columns=column_names)
-        lon = self._df['LON'].values.mean()
-        lat = self._df['LAT'].values.mean()
-
-        self._df = self._df[[v for k,v in column_names.items()]]
-        self._df = self._df.drop(['LON','LAT'],axis=1)
-        pars = {i:i for i in self._df.columns}
-
-        amp = self.calculate_temperature_amplitude()
-        tav = self.calculate_long_term_average_temp()
-    
-        super().__init__(self._df, pars, lon = lon, lat = lat,amp = amp, tav =tav, **kwargs)
-
-    def calculate_long_term_average_temp(self, tmax_name: str = 'TMAX', tmin_name: str = 'TMIN') -> float:
-        """
-        Calculate long-term average temperature (TAV).
-
-        This method computes the average of daily maximum and minimum temperatures.
-
-        Parameters
-        ----------
-        tmax_name : str, optional
-            The column name for maximum temperature. Default is 'TMAX'.
-        tmin_name : str, optional
-            The column name for minimum temperature. Default is 'TMIN'.
-
-        Returns
-        -------
-        float
-            The long-term average temperature (TAV).
-        """
-        return ((self._df[tmax_name].values + self._df[tmin_name].values)/2).mean()
-
-    def calculate_temperature_amplitude(self, tmax_name: str = 'TMAX', tmin_name: str = 'TMIN', date_name: str = 'DATE') -> float:
-        """
-        Calculate temperature amplitude (AMP).
-
-        This method computes the temperature amplitude, which is the half-difference 
-        between the maximum and minimum monthly averages of temperature over time.
-
-        Parameters
-        ----------
-        tmax_name : str, optional
-            The column name for maximum temperature. Default is 'TMAX'.
-        tmin_name : str, optional
-            The column name for minimum temperature. Default is 'TMIN'.
-        date_name : str, optional
-            The column name for dates. Default is 'DATE'.
-
-        Returns
-        -------
-        float
-            The temperature amplitude (AMP).
-        
-        Raises
-        ------
-        AssertionError
-            If the `date_name` column is not of type `np.datetime64`.
-        """
-        assert isinstance(self._df[date_name].values[0], np.datetime64)
-        month = self._df[date_name].map(lambda x: str(x.month)).values
-
-        fdgrouped = self._df[[tmax_name, tmin_name]].groupby(month)
-        
-        ampvals = fdgrouped.apply(monthly_amplitude).avgm.values
-        amp = (ampvals.max()-ampvals.min())/2
-
-        return float(amp)
-
-
-
