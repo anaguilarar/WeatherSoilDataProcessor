@@ -31,15 +31,16 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 
-def create_dimension(xrdata_dict, newdim_name = 'date'):
+def create_dimension(xrdata_dict, newdim_name = 'date', isdate = True):
     weather_datacube_mrs = []
     for k,v in tqdm(xrdata_dict.items()):
         xrtemp = v.expand_dims(dim = [newdim_name])
-        xrtemp['date'] = [k]
+        xrtemp[newdim_name] = [k]
         weather_datacube_mrs.append(xrtemp)
         
     weather_datacube_mrs = xarray.concat(weather_datacube_mrs, dim = newdim_name)
-    weather_datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
+    if isdate:
+        weather_datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
     return weather_datacube_mrs
 
 
@@ -124,16 +125,14 @@ def main():
 
     logging.info(f"Reading configuration from {args.config}")
     weather_datacube = get_weather_datacube(config)
-    weather_datacube_mrs = create_dimension(weather_datacube)
+    weather_datacube = create_dimension(weather_datacube)
     logging.info("Weather data cube created from {} to {}".format(config.WEATHER.starting_date,config.WEATHER.ending_date))
     soil_datacube = get_soil_datacube(config)
     logging.info("Soil data cube created with the following variables: {}".format(config.SOIL.variables))
 
     # reproject to planar coordinate system
     crs = config.GENERAL.crs_reference
-    crs = 'ESRI:54052' ## same as soilgrid project
-    #crs = 'EPSG:4326'
-    weather_datacube_mrs= weather_datacube_mrs.rio.write_crs('EPSG:4326').rio.reproject(crs)
+    weather_datacube= weather_datacube.rio.write_crs('EPSG:4326').rio.reproject(crs)
     soil_datacube = {k: reproject_xrdata(v,target_crs=crs) for k, v in soil_datacube.items()}
 
     gdf = gpd.read_file(config.ROI.path)
@@ -165,7 +164,7 @@ def main():
         print("==> soil")
         soil_datacube_m = SoilDataCube.mask_mldata(soil_datacube,subset.geometry, userio = True)
         print("==> weather")
-        weather_datacube_m = mask_xarray_using_rio(weather_datacube_mrs.copy(), subset.geometry)
+        weather_datacube_m = mask_xarray_using_rio(weather_datacube.copy(), subset.geometry)
         if weather_datacube_m is None: continue
         weather_datacube_m = weather_datacube_m.where(weather_datacube_m<nanvalue, np.nan)
 
@@ -185,6 +184,7 @@ def main():
             weather_datacube_r = mask_xarray_using_rio(weather_datacube_r, subset.geometry)
             weather_datacube_r = weather_datacube_r.where(weather_datacube_r<nanvalue, np.nan)
 
+        # check if weather and soil data have information
         datainweather = all(all(np.isnan(np.unique(weather_datacube_r.isel(date = 1)[var].values))) for var in list(weather_datacube_r.data_vars.keys()))
         datainsoil = not all(np.isnan(np.unique(soil_datacube_r[list(soil_datacube_r.keys())[0]][config.SOIL.reference_variable].values)))
 
@@ -200,22 +200,18 @@ def main():
                 texturemap[texturemap == 0] = np.nan
                 soil_datacube_rmrt[k] = add_2dlayer_toxarrayr(texturemap, v, variable_name=config.GROUPBY.variable)
 
-
             ## merge datasets
-            soilref = soil_datacube_rmrt['0-5']
+            # texture reference
+            soilref = soil_datacube_rmrt[config.SOIL.depth_reference]
             weatherdatavars = list(weather_datacube_r.data_vars.keys())
             weather_datacube_mrs = xarray.merge([weather_datacube_r,soilref])[weatherdatavars+ [config.GROUPBY.variable]]
 
+            soil_datacube_mrs = create_dimension(soil_datacube_r, newdim_name= 'depth', isdate=False)
+            soildatavars = list(soil_datacube_mrs.data_vars.keys())
+            soil_datacube_mrs = xarray.merge([soil_datacube_mrs,soilref[config.GROUPBY.variable]])[soildatavars+ [config.GROUPBY.variable]]
+            
             
             ### DSSAT FILES
-                    
-            soil_datacube_mrs = []
-            for ks, vs in soil_datacube_rmrt.items():
-                xrtemp = vs.expand_dims(dim = ['depth'])
-                xrtemp['depth'] = [ks]
-                soil_datacube_mrs.append(xrtemp)
-
-            soil_datacube_mrs = xarray.concat(soil_datacube_mrs, dim = 'depth')
             logging.info(f"  creating DSSAT soil file in {output}")
 
             soil_df = from_soil_to_dssat(soil_datacube_mrs, groupby=config.GROUPBY.variable, outputpath=output, outputfn='SOIL'+roi_name, codes=TEXTURE_CLASSES, country = config.GENERAL.country.upper(),site = roi_name)
