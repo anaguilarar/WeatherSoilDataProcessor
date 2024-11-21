@@ -5,6 +5,11 @@ import numpy as np
 
 from typing import Dict
 import copy
+
+from tqdm import tqdm
+import xarray
+from datetime import datetime
+
 class DataCubeBase():
     """
     A base class for handling data cubes, including clipping,
@@ -135,3 +140,16 @@ class DataCubeBase():
         return resampled_data.where(resampled_data != -9999, np.nan)
     
 
+
+
+def create_dimension(xrdata_dict, newdim_name = 'date', isdate = True):
+    datacube_mrs = []
+    for k,v in tqdm(xrdata_dict.items()):
+        xrtemp = v.expand_dims(dim = [newdim_name])
+        xrtemp[newdim_name] = [k]
+        datacube_mrs.append(xrtemp)
+        
+    datacube_mrs = xarray.concat(datacube_mrs, dim = newdim_name)
+    if isdate:
+        datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
+    return datacube_mrs

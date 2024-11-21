@@ -406,7 +406,8 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
                      crs: str, nodata: int=0, 
                      bands_names: List[str] = None,
                      dimsformat: str = 'CHW',
-                     dimsvalues: Dict[str, np.ndarray] = None):
+                     dimsvalues: Dict[str, np.ndarray] = None,
+                     dtype = None):
     
     """
     Convert a list of raster images to an xarray dataset.
@@ -488,12 +489,15 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
     imgindex = 1
     for i in range(len(listraster)):
         img = listraster[i]
+        if dtype is not None:
+            img = img.astype(dtype)
         xrimg = xarray.DataArray(img)
         xrimg.name = bands_names[i]
         riolist.append(xrimg)
         imgindex += 1
 
     # update nodata attribute
+    if dtype is not None: metadata['dtype'] = dtype
     metadata['nodata'] = nodata
     metadata['count'] = imgindex
 
@@ -763,3 +767,29 @@ def xy_fromtransform(transform, width, height):
     return [xvals, yvals]
 
 
+
+def masking_rescaling_xrdata(xrdata, feat_geom, buffer = None, scale_factor = None,resample_ref = None, return_original_size = True, nanvalue = 3.4028235e+38, method = 'nearest'):
+    """
+    This funct ion is implemented to mask and re scale xarray  using small geometries, less than xarray data's spatial resolution
+    """
+    feat_c = None
+    if buffer:
+        feat_c = feat_geom.copy()
+        feat_geom = feat_geom.buffer(buffer)
+        
+    xrdata_m = mask_xarray_using_rio(xrdata.copy(), feat_geom.geometry)
+    if xrdata_m is None: return None
+    ## 
+    
+    if scale_factor:
+        xrdata_m= re_scale_xarray(xrdata_m, scale_factor= scale_factor)
+        
+    elif resample_ref is not None:
+        xrdata_m= resample_xarray(xrdata_m, xrreference=resample_ref, method= method)
+        
+    if buffer and return_original_size:
+        xrdata_m = mask_xarray_using_rio(xrdata_m, feat_c.geometry)
+        
+    xrdata_m = xrdata_m.where(xrdata_m<nanvalue, np.nan)
+    
+    return xrdata_m
