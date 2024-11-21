@@ -265,5 +265,5 @@ class DSSATManagement_base():
             
         print(f"Configuration file written: {config_path}")
         
-        returned_value = subprocess.call(['RScript', 'r_create_experimental_files.R', f'{config_path}'] , shell= True)
+        returned_value = subprocess.call(['RScript', './r_scripts/r_create_experimental_files.R', f'{config_path}'] , shell= True)
         print(returned_value)

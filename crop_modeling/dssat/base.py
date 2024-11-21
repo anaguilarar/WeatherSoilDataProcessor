@@ -160,7 +160,7 @@ class DSSABase(object):
             os.rename(soil[0], os.path.join(dirname, 'TR.SOL'))
     
             config_path = os.path.join(pathiprocess, 'experimental_file_config.yaml')
-            returned_value = subprocess.call(['RScript', 'r_run_dssat.R', f'{config_path}'] , shell= True)
+            returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
     
         
         
