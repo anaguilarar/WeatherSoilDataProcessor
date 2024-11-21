@@ -407,6 +407,7 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
                      bands_names: List[str] = None,
                      dimsformat: str = 'CHW',
                      dimsvalues: Dict[str, np.ndarray] = None,
+                     depth_dim_name: str = 'date',
                      dtype = None):
     
     """
@@ -424,11 +425,13 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
         Value representing nodata. Defaults to 0.
     bands_names : List[str], optional
         List of band names. Defaults to None.
-    dims_format : str, optional
-        Format of dimensions. Defaults to 'CHW'.
+    dimsformat : str, optional
+        Format of dimensions. Defaults to 'CHW'. where C is channel, H is height, and W is width
     dims_values : Dict[str, np.ndarray], optional
         Values for the dimensions. Defaults to None.
-
+    depth_dim_name: str, optional
+        Name of the depth dimension
+        
     Returns:
     --------
     xr.Dataset
@@ -453,22 +456,22 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
         if dimsformat == 'CDWH':
             width = listraster[0].shape[1]
             height = listraster[0].shape[2]
-            dims = ['date','y','x']
+            dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'CDHW':
             width = listraster[0].shape[2]
             height = listraster[0].shape[1]
-            dims = ['date','y','x']
+            dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'DCHW':
             width = listraster[0].shape[2]
             height = listraster[0].shape[1]
-            dims = ['date','y','x']
+            dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'CHWD':
             width = listraster[0].shape[1]
             height = listraster[0].shape[0]
-            dims = ['y','x','date']
+            dims = ['y','x',depth_dim_name]
 
     dim_names = {'dim_{}'.format(i):dims[i] for i in range(
         len(listraster[0].shape))}
@@ -489,15 +492,13 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
     imgindex = 1
     for i in range(len(listraster)):
         img = listraster[i]
-        if dtype is not None:
-            img = img.astype(dtype)
         xrimg = xarray.DataArray(img)
         xrimg.name = bands_names[i]
         riolist.append(xrimg)
         imgindex += 1
 
     # update nodata attribute
-    if dtype is not None: metadata['dtype'] = dtype
+    
     metadata['nodata'] = nodata
     metadata['count'] = imgindex
 
@@ -516,7 +517,11 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
         multi_xarray = multi_xarray.assign_coords(x=np.sort(np.unique(x)))
         ys = np.sort(np.unique(y))[::-1] if list(transform)[4] < 0 else np.unique(y)
         multi_xarray = multi_xarray.assign_coords(y=ys)
-
+        
+    if dtype is not None: 
+        metadata['dtype'] = dtype
+        multi_xarray = multi_xarray.astype(dtype)
+        
     return multi_xarray
 
 

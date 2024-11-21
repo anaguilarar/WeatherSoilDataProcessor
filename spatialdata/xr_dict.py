@@ -123,7 +123,7 @@ def crop_xarray_using_mask(maskdata: np.ndarray,
     
     return xrfiltered
     
-def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
+def from_dict_toxarray(dictdata, dimsformat = 'DCHW', depth_dim_name = 'date'):
     """
     Convert spatial data from a custom dictionary to an xarray dataset.
 
@@ -162,15 +162,16 @@ def from_dict_toxarray(dictdata, dimsformat = 'DCHW'):
     trd = affine.Affine(*trdata)
     nodata  = dictdata['attributes'].get('nodata', 0)
     if(nodata!= 0): float(nodata)
-    dtype = dictdata['attributes'].get('nodata', None)
-    dtype = np.float32 if(dtype== 'float32') else float
+    dtype = dictdata['attributes'].get('dtype', None)
+    dtype = np.float32 if(dtype == 'float32') else float
     datar = list_tif_2xarray(listnpdata, trd,
                                 crs=crsdata,
                                 bands_names=varnames,
                                 dimsformat = dimsformat,
                                 dimsvalues = dictdata['dims'],
                                 nodata = nodata,
-                                dtype = dtype)
+                                dtype = dtype,
+                                depth_dim_name=depth_dim_name)
     
     if 'date' in list(dictdata['dims'].keys()):
         datar = datar.assign_coords(date=np.sort(
