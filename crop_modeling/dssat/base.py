@@ -35,8 +35,6 @@ def check_soil_id(management_pathfile, new_soil_id):
     if datalineinfo.ID_SOIL.values[0] == '-99':
         datalineinfo.ID_SOIL = new_soil_id
         datalineinfo.FLNAME = '-99'
-        print(' new values', datalineinfo.values)
-        
         section_data_str = lines[(section_id+1)]
 
         lines[section_id+1] = join_row_using_header_indices(section_header_str, section_data_str, row_to_replace = datalineinfo.values[0])
@@ -109,8 +107,39 @@ def create_DSSBatch(ExpFilePath: str, selected_treatments: Optional[list[str]]=N
 
 
 class DSSABase(object):
-    
-    def set_up(self, **kwargs):
+    """
+    A class for managing DSSAT-related file processing, configuration, and execution.
+
+    Provides methods for setting up DSSAT experiments, converting data from other formats to DSSAT-compatible files, 
+    and running simulations using R scripts.
+    """
+    def __init__(self, path: str) -> None:
+        """
+        Initialize the DSSABase object.
+
+        Parameters
+        ----------
+        path : str
+            Path to the working directory.
+        """
+        self.path = path
+        self._tmp_path = ""
+        self._process_paths: List[str] = []
+        
+    def set_up(self, **kwargs) -> None:
+        """
+        Set up the working directory, temporary paths, and general information about the site and country.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Keyword arguments to configure site and country.
+
+            - site : str, optional
+                Site name to be used as a subdirectory for temporary files.
+            - country : str, optional
+                Country code or name for soil data.
+        """
         self._process_paths = []
         assert os.path.exists(self.path)
         
@@ -124,49 +153,95 @@ class DSSABase(object):
         
         self.country = kwargs.get('country', None)
     
-    def set_up_management(self, crop = None, cultivar = None, planting_date = None, harvesting_date = None, 
-                          template = None, roi_id = 1, plantingWindow = None, fertilizer = None, index_soilwat = 1):
-        print(self._tmp_path)
+    def set_up_management(
+        self,
+        crop: Optional[str] = None,
+        cultivar: Optional[str] = None,
+        planting_date: Optional[str] = None,
+        harvesting_date: Optional[str] = None,
+        template: Optional[str] = None,
+        roi_id: int = 1,
+        plantingWindow: Optional[int] = None,
+        fertilizer: Optional[bool] = None,
+        index_soilwat: int = 1,
+        ) -> None:
+        """
+        Set up the management configuration and create DSSAT experiment files.
+
+        Parameters
+        ----------
+        crop : str, optional
+            Crop name.
+        cultivar : str, optional
+            Crop cultivar identifier.
+        planting_date : str, optional
+            Planting date in 'YYYY-MM-DD' format.
+        harvesting_date : str, optional
+            Harvesting date in 'YYYY-MM-DD' format.
+        template : str, optional
+            Path to the experiment template file.
+        roi_id : int, default=1
+            Region of interest ID.
+        plantingWindow : int, optional
+            Planting window in days.
+        fertilizer : bool, optional
+            Whether to include fertilizer in the configuration.
+        index_soilwat : int, default=1
+            Soil water index for the experiment.
+        """
         self.specific_paths()
-        print(self._process_paths)
-        assert len(self._process_paths)>0, 'soil and weather data must be obtained first'
+        assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
+
         dssatm = DSSATManagement_base(crop, cultivar, 
                                 planting_date=planting_date, harvesting_date= harvesting_date)
         
         for pathtiprocess in self._process_paths:
-            dssatm.create_file_using_rdssat(template, pathtiprocess, roi_id = roi_id, plantingWindow = plantingWindow, 
+            output = dssatm.create_file_using_rdssat(template, pathtiprocess, roi_id = roi_id, plantingWindow = plantingWindow, 
                                             fertilizer = fertilizer, index_soilwat = index_soilwat)
 
+            if output is None:
+                continue
             experiment_config = OmegaConf.load(os.path.join(pathtiprocess, 'experimental_file_config.yaml'))
             
             management_pathfile = glob.glob(pathtiprocess+'/*.{}*'.format(experiment_config.MANAGEMENT.crop_code))
             print(f'experimental file created: {management_pathfile}')
             
             check_soil_id(management_pathfile, experiment_config.SOIL.ID_SOIL )
+            
     
-    def set_up_crop(self, crop, cultivar, cultivar_template):
+    def set_up_crop(self, crop: str, cultivar: str, cultivar_template: str) -> None:
+        """
+        Set up crop and cultivar configurations.
 
-        crop = DSSATCrop_base(crop.lower(), cultivar_code=cultivar)
-        crop.update_cultivar_using_path(cultivar_template)
+        Parameters
+        ----------
+        crop : str
+            Crop name.
+        cultivar : str
+            Crop cultivar code.
+        cultivar_template : str
+            Path to the cultivar template file.
+        """
+
+        crop_manager = DSSATCrop_base(crop.lower(), cultivar_code=cultivar)
+        crop_manager.update_cultivar_using_path(cultivar_template)
         for pathtiprocess in self._process_paths:
-            crop.write(pathtiprocess)
+            crop_manager.write(pathtiprocess)
     
-    def run_using_r(self):
-        
+    def run_using_r(self) -> None:
+        """
+        Run DSSAT simulations using an R script.
+        """
         for pathiprocess in self._process_paths:
             soil = glob.glob(pathiprocess+'/*.SOL*')
-            
+            if len(soil)==0: continue
             dirname = os.path.dirname(soil[0])
+            if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
+            
             os.rename(soil[0], os.path.join(dirname, 'TR.SOL'))
-    
             config_path = os.path.join(pathiprocess, 'experimental_file_config.yaml')
             returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
-    
-        
-        
-    def __init__(self, path) -> None:
-        self.path = path
-
+            #if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
     
     @staticmethod
     def open_file(path: str) -> List[str]:
@@ -201,10 +276,38 @@ class DSSABase(object):
         #list_files = glob.glob(self._tmp_path+'/*.{}*'.format('SOL'))
         self._process_paths = [os.path.dirname(fn) for fn in list_files]
     
-    def from_datacube_to_dssatfiles(self, xrdata, 
-                                    data_source = 'climate', dim_name = 'date', 
-                                    target_crs = 'EPSG:4326', group_by = None, 
-                                    group_codes = None):
+    def from_datacube_to_dssatfiles(
+            self,
+            xrdata,
+            data_source: str = 'climate',
+            dim_name: str = 'date',
+            target_crs: str = 'EPSG:4326',
+            group_by: Optional[str] = None,
+            group_codes: Optional[dict] = None,
+        ) -> pd.DataFrame:
+        """
+        Converts data from a datacube to DSSAT-compatible files.
+
+        Parameters
+        ----------
+        xrdata : xarray.DataArray or xarray.Dataset
+            Input data in a datacube format.
+        data_source : str, default='climate'
+            Source of data ('climate' or 'soil').
+        dim_name : str, default='date'
+            Name of the time dimension in the datacube.
+        target_crs : str, default='EPSG:4326'
+            Target coordinate reference system.
+        group_by : str, optional
+            Grouping column for data aggregation.
+        group_codes : dict, optional
+            Group codes for the data.
+
+        Returns
+        -------
+        pd.DataFrame
+            Data summarized as a DataFrame.
+        """
         
         dfdata = summarize_datacube_as_df(xrdata, dimension_name= dim_name, group_by = group_by, project_to= target_crs)
         
@@ -218,18 +321,6 @@ class DSSABase(object):
                                     country = self.country.upper(),site = self.site, soil_id='TRAN00001')
             
         return dfdata
-
-        #subprocess.call(['RScript', 'r_create_experimental_files.R', f"'{fn}'"], shell= True)
-
-        #returned_value = subprocess.call(cmd, shell=True)  # returns the exit code in unix
-        #print('returned value:', returned_value)
-        
-        #excinfo.stdout = re.sub("\n{2,}", "\n", excinfo.stdout)
-        #excinfo.stdout = re.sub("\n$", "", excinfo.stdout)
-        
-        #assert excinfo.returncode == 0, 'DSSAT execution Failed, check '\
-        #    + f'{os.path.join(self._RUN_PATH, "ERROR.OUT")} file for a'\
-        #    + ' detailed report'
 
 class DSSATCrop_base(Crop):
     

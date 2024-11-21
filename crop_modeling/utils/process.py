@@ -73,7 +73,6 @@ def check_crs_inxrdataset(xrdataset):
 def get_crs_fromxarray(xrdata):
     crs = None
     if 'crs' in xrdata.attrs.keys():
-        print(xrdata.attrs['crs'])
         crs = xrdata.attrs['crs']
     else:
         try:

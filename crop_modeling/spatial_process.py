@@ -4,6 +4,8 @@ from .utils.process import get_crs_fromxarray
 from spatialdata.gis_functions import masking_rescaling_xrdata
 from tqdm import tqdm
 from spatialdata.data_fromconfig import get_weather_datacube, get_soil_datacube
+from spatialdata.xr_dict import CustomXarray
+
 import numpy as np
 
 from typing import Any
@@ -23,7 +25,7 @@ def reproject_xarray(xrdata, target_crs, src_crs = None):
 
 import xarray
 
-def get_roi_data(roi, weather_datacube_s, soil_datacube_dict, aggregate_by = None, min_area = 15, scale_factor = 10):
+def get_roi_data(roi, weather_datacube, soil_datacube, aggregate_by = None, min_area = 15, scale_factor = 10):
     """_summary_
 
     Parameters
@@ -43,21 +45,25 @@ def get_roi_data(roi, weather_datacube_s, soil_datacube_dict, aggregate_by = Non
     else:
         buffer = None 
 
-    weather_datacube_m = masking_rescaling_xrdata(weather_datacube_s, roi, buffer=buffer, scale_factor=scale_factor, return_original_size=True, method = 'nearest')
+    weather_datacube_m = masking_rescaling_xrdata(weather_datacube, roi, buffer=buffer, scale_factor=scale_factor, return_original_size=True, method = 'nearest')
     xr_reference = weather_datacube_m.isel(date = 0)
-    soil_datacube_m = {k: masking_rescaling_xrdata(v, roi, buffer=buffer, resample_ref =xr_reference)  for k,v in tqdm(soil_datacube_dict.items())}
-    weather_datacube_m.attrs['crs'] = get_crs_fromxarray(weather_datacube_s)
+    
+    weatherdatavars = list(weather_datacube_m.data_vars.keys())
+    weather_datacube_m.attrs['crs'] = get_crs_fromxarray(weather_datacube)    
+    
+    if isinstance(soil_datacube, dict):
+        soil_datacube_m = {k: masking_rescaling_xrdata(v, roi, buffer=buffer, resample_ref =xr_reference)  for k,v in tqdm(soil_datacube.items())}
+        soil_datacube_m = create_dimension(soil_datacube_m, newdim_name = 'depth', isdate = False)
+            
+    else:
+        soil_datacube_m = masking_rescaling_xrdata(soil_datacube, roi, buffer=buffer, resample_ref =xr_reference, return_original_size=True, method = 'nearest')
     
     if aggregate_by == 'texture':
-        soilref = get_layer_texture(soil_datacube_m[list(soil_datacube_m.keys())[0]])
-        weatherdatavars = list(weather_datacube_m.data_vars.keys())
+        soilref = get_layer_texture(soil_datacube_m.isel(depth = 0))
+        # merge texture to weather and soil
         weather_datacube_m = xarray.merge([weather_datacube_m,soilref])[weatherdatavars+ ['texture']]
-        #
-        soil_datacube_m = create_dimension(soil_datacube_m, newdim_name = 'depth', isdate = False)
         soildatavars = list(soil_datacube_m.data_vars.keys())
         soil_datacube_m = xarray.merge([soil_datacube_m,soilref['texture']])[soildatavars+ ['texture']]
-    else:
-        soil_datacube_m = create_dimension(soil_datacube_m, newdim_name = 'depth', isdate = False)
 
     soil_datacube_m.attrs['crs'] = get_crs_fromxarray(weather_datacube_m)
 
@@ -127,8 +133,7 @@ class CM_SpatialData():
             weather_datac = get_weather_datacube(self.config)
             weather_datac = create_dimension(weather_datac, newdim_name=self.dim_names['climate'], isdate=False)
         
-        crs = get_crs_fromxarray(weather_datac)
-        self.climate = weather_datac.rio.write_crs(crs).rio.reproject(self.config.SPATIAL_INFO.crs)
+        self.climate = weather_datac.rio.write_crs(get_crs_fromxarray(weather_datac)).rio.reproject(self.config.SPATIAL_INFO.crs)
         self.climate.attrs['crs'] = self.config.SPATIAL_INFO.crs
         
     def get_soil_data(self):
@@ -137,15 +142,17 @@ class CM_SpatialData():
 
         else:
             soil_datac = get_soil_datacube(self.config)
-            
-        self.soil = {k: reproject_xrdata(v,target_crs=self.config.SPATIAL_INFO.crs) for k, v in soil_datac.items()}
+        
+        if isinstance(soil_datac, dict):self.soil = {k: reproject_xrdata(v,target_crs=self.config.SPATIAL_INFO.crs) for k, v in soil_datac.items()}
+        else:
+            self.soil = soil_datac.rio.write_crs(get_crs_fromxarray(soil_datac)).rio.reproject(self.config.SPATIAL_INFO.crs)
+            self.soil.attrs['crs'] = self.config.SPATIAL_INFO.crs
     
     def extract_roi_data(self, roi, group_by = None):
         if self.climate is None: self.get_climate_data()
         if self.soil is None: self.get_soil_data()
         
         weatherm, soilm= get_roi_data(roi, self.climate, self.soil, aggregate_by = group_by, scale_factor= self.config.WEATHER.scale_factor)
-        weatherm = self.weather_transformer(weatherm)
         
         return weatherm, soilm
     

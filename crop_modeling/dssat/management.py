@@ -249,8 +249,12 @@ class DSSATManagement_base():
             Additional configuration options.
         """
         self.path = path
-        
-        self.check_files(filex_template)
+        try:
+            self.check_files(filex_template)
+        except Exception as error:
+            # handle the exception
+            print("An exception occurred:", error)
+            return None
         
         number_years = self.total_climate_years()
         soilid, soildata = self.soil_data()
@@ -266,4 +270,4 @@ class DSSATManagement_base():
         print(f"Configuration file written: {config_path}")
         
         returned_value = subprocess.call(['RScript', './r_scripts/r_create_experimental_files.R', f'{config_path}'] , shell= True)
-        print(returned_value)
+        return returned_value
