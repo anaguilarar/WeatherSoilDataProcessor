@@ -14,7 +14,7 @@ SOIL:
   depths: ["0-5","5-15","15-30","30-60"]
   crs_reference: 'ESRI:54052'
   reference_variable: sand
-  depth_refernce: '0-5'
+  depth_reference: '0-5'
 
 GROUPBY:
   variable: texture
@@ -26,7 +26,7 @@ WEATHER:
     tmax: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/temperature_tmax_hnd_raw"
     tmin: "D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/temperature_tmin_hnd_raw"
   scale_factor: 10
-  starting_date: '2022-01-01'
+  starting_date: '2021-01-01'
   ending_date: '2023-12-31'
   reference_variable: 'precipitation'
   
