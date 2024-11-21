@@ -14,8 +14,6 @@ create_experimental_files <-function(path_to_config){
   
   ##read paths
   #Read config
-  
-  print(path_to_config)
   config = suppressWarnings(yaml::read_yaml(path_to_config))
   
   SOIL = config$SOIL
@@ -33,7 +31,6 @@ create_experimental_files <-function(path_to_config){
   file_x <- read_filex(MANAGEMENT[['template_path']])
   #Set the experimental directory
   setwd(GENERAL[['working_path']])
-  
 
   #Make proposed changes to FileX
   file_x$FIELDS$WSTA<-config$WEATHER$file_name   
@@ -101,10 +98,10 @@ create_experimental_files <-function(path_to_config){
     file_x$`TREATMENTS                        -------------FACTOR LEVELS------------`[1+j,]$MH <- 1+j
     file_x$`TREATMENTS                        -------------FACTOR LEVELS------------`[1+j,]$SM <- 1+j
   }
-  
+
+  print(paste0(GENERAL[['working_path']], '/', GENERAL[['output_name']], formatC(width = 4, as.integer((i)), flag = "0")))
   #Overwrite original FileX with new values
   write_filex(file_x,paste0(GENERAL[['output_name']], formatC(width = 4, as.integer((i)), flag = "0"),'.',MANAGEMENT[['crop_code']],'X'))
-  
   rm(file_x)
   gc()
 }
