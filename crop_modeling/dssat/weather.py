@@ -1,20 +1,10 @@
 
 import pandas as pd
-from DSSATTools.weather import Weather
-
-
 import numpy as np
 import pandas as pd
 import os
-
-
-        
-
-
-def monthly_amplitude(c):
-    d = {}
-    d['avgm'] = ((c.iloc[:,0] + c.iloc[:,1])/2).mean()
-    return pd.Series(d, index = ['avgm'])
+from DSSATTools.weather import Weather
+from ..utils.u_weather import monthly_amplitude
 
 class DSSAT_Weather(Weather):
     """

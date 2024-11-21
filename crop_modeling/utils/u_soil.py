@@ -1,5 +1,9 @@
-from rosetta import SoilData, rosetta
+from spatialdata.gis_functions import add_2dlayer_toxarrayr
+from spatialdata.soil_data import find_soil_textural_class_in_nparray
+
 import numpy as np
+from rosetta import SoilData, rosetta
+
 
 ## 'Sat. hydraulic conductivity, macropore, cm h-1'
 def calculate_sks(sand: float = None, 
@@ -179,3 +183,11 @@ def slu1(clay:float, sand:float) -> float:
     else:
         lu = 8-0.08*clay
     return lu
+
+
+def get_layer_texture(soilxrdata_layer, texture_name = 'texture'):
+    sand = soilxrdata_layer.sand.values*0.1 if np.nanmax(soilxrdata_layer.sand.values) > 300 else soilxrdata_layer.sand.values
+    clay = soilxrdata_layer.clay.values*0.1 if np.nanmax(soilxrdata_layer.clay.values) > 300 else soilxrdata_layer.clay.values
+    texturemap = find_soil_textural_class_in_nparray(sand, clay).astype(float)
+    texturemap[texturemap == 0] = np.nan
+    return add_2dlayer_toxarrayr(texturemap, soilxrdata_layer, variable_name=texture_name)

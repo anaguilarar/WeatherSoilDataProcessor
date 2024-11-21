@@ -1,16 +1,16 @@
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import glob
-import os
 import subprocess
 import yaml
 
 from .soil import DSSATSoil_base
 from .weather import DSSAT_Weather
 
-import pandas as pd
-
 from typing import Dict, Tuple
+import pandas as pd
+import os
+
 
 class DSSATManagement_base():
     """
@@ -134,12 +134,12 @@ class DSSATManagement_base():
         Parameters
         ----------
         **kwargs : dict
-            General experiment configuration options, such as: output_name, roi_id, pplantingWindow, and index_soilwat.
+            General experiment configuration options, such as: output_name, roi_id, plantingWindow, and index_soilwat.
         """
         self.output_name = kwargs.get('output_name', 'EXP')
         self.roi_id = kwargs.get('roi_id', 1)
         self.plantingWindow = kwargs.get('plantingWindow',1)
-        self.fertilizer = kwargs.get('fertilizer',False)
+        self.fertilizer = kwargs.get('fertilizer',False) # TODO: implement true scenario
         self.index_soilwat = kwargs.get('index_soilwat',1)
         
     def soil_data(self) -> Tuple[str, pd.DataFrame]:
@@ -155,6 +155,7 @@ class DSSATManagement_base():
         soildata = DSSATSoil_base.soil_properties_as_df(self._soil[0])
         soildata = soildata[['SDUL', 'SLLL','SLB']].values.T.astype(float)
         soilid =  DSSATSoil_base.check_id(self._soil[0])
+        
         return (soilid, soildata)
 
     def check_weather_fn(self) -> str:

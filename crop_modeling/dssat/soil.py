@@ -1,12 +1,12 @@
 import os
 import numpy as np
 import pandas as pd
-from DSSATTools.soil import SoilProfile, SoilLayer
+
 from typing import List
 
 from .files_reading import section_indices, delimitate_header_indices
-from ..soil_funs import find_soil_textural_class, calculate_sks, slu1
-
+from ..utils.u_soil import find_soil_textural_class, calculate_sks, slu1
+from DSSATTools.soil import SoilProfile, SoilLayer
             
 class DSSATSoil_base():
     """
@@ -90,12 +90,15 @@ class DSSATSoil_base():
             lines = DSSATSoil_base.open_file(path)
             infoindices = list(section_indices(lines, pattern='*'))
             line = lines[infoindices[1]]
-            lines[infoindices[1]] =line.replace(soilid,'1')
+            #lines[infoindices[1]] =line.replace(soilid,'1')
+            lines[infoindices[1]] ='*TRAN00001   ISRIC V2    SIC      17 silty clay\n'
             with open(path, 'w') as file:
-                file.writelines( lines )
-            soilid = '1'
+                for line in lines:
+                    file.write(f"{line}")
+            soilid = 'TRAN00001'
             
         return soilid
+
     
     @staticmethod
     def soil_properties_as_df(path: str) -> pd.DataFrame:
@@ -353,9 +356,9 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         
         self.country = kwargs.get('country', 'COL')[:3].upper()
         self.site = kwargs.get('site', 'CAL')[:3].upper()
-        self.lat = np.round(kwargs.get('lat', -99), 2)
-        self.lon = np.round(kwargs.get('lon', -99), 2)
-
+        self.lat = str(np.round(kwargs.get('lat', -99), 2))
+        self.lon = str(np.round(kwargs.get('lon', -99), 2))
+        
         self.id = kwargs.get('id', None)
         self.id = f'{self.country}-{self.site}'.replace(' ', '') if self.id is None else self.id
 
