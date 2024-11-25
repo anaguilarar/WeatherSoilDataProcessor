@@ -195,7 +195,7 @@ def get_new_coords_for_newshape(oldx, oldy, newheight,newidth):
 
     return [(newx, newy), new_transform]
 
-def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
+def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y', resampling_method = 'nearest'):
     """
     Reproject xarray data to a new coordinate reference system (CRS).
 
@@ -217,7 +217,7 @@ def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
     """
     variables = list(xrsource.data_vars.keys())
     assert len(xrsource.sizes.keys())<3, "not supported 3 dimensions yet" 
-
+    rmethod = Resampling.nearest if resampling_method == 'nearest' else Resampling.bilinear
     #
     tr = xrsource.rio.transform() if xrsource.rio.transform() else transform_fromxy(
         x =xrsource[xdim_name].values, y = xrsource[ydim_name].values)[0]
@@ -239,7 +239,7 @@ def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y'):
             src_crs=xrsource.rio.crs,
             dst_crs=target_crs,
             src_nodata = nodata,
-            resampling=Resampling.bilinear,
+            resampling=rmethod,
 
         )
         list_tif.append(np.squeeze(img))
