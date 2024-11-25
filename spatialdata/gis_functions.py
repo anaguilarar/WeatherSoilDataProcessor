@@ -1,22 +1,82 @@
-from typing import List
-from rasterio.warp import reproject
-from rasterio.enums import Resampling
-import shapely
-from shapely.geometry import Polygon
-import xarray
-import numpy as np
-from typing import List, Optional, Dict, Tuple, Union
-from rasterio.transform import Affine
-from rasterio import windows
-import rasterio
-from shapely.geometry import mapping
-import geopandas as gpd
-import os
-import math
-from rasterio.transform import from_bounds
 
-import xarray
+import geopandas as gpd
+import math
 import numpy as np
+import os
+import pandas as pd
+import rasterio
+import shapely
+import xarray
+
+from rasterio import windows
+from rasterio.enums import Resampling
+from rasterio.transform import Affine, from_bounds
+from rasterio.warp import reproject
+from shapely.geometry import mapping
+from shapely.ops import unary_union
+from shapely.geometry import Polygon
+
+from typing import List, Optional, Dict, Tuple, Union
+
+
+
+def xrarray_to_categorical_polygon(xrdata, variable: str, 
+    xdim_name: str = 'x', 
+    ydim_name: str = 'y', 
+    crs: str = None
+) -> gpd.GeoDataFrame:
+    """
+    Converts a categorical variable from an xarray dataset into a polygon-based GeoDataFrame.
+
+    Parameters
+    ----------
+    xrdata : xarray.Dataset
+        The xarray dataset containing the variable to convert.
+    variable : str
+        The name of the variable.
+    xdim_name : str, optional
+        Name of the x-coordinate dimension in the xarray dataset, by default 'x'.
+    ydim_name : str, optional
+        Name of the y-coordinate dimension in the xarray dataset, by default 'y'.
+    crs : int or str, optional
+        Coordinate reference system for the output GeoDataFrame. If None, uses the CRS of `xrdata`.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        A GeoDataFrame containing polygons for each unique non-NaN value in the specified variable.
+
+    Raises
+    ------
+    ValueError
+        If the provided xarray dataset does not contain the specified variable.
+    """
+
+    crs = xrdata.rio.crs if crs is None else crs
+    x, y = xrdata[xdim_name].values, xrdata[ydim_name].values
+    x, y = np.meshgrid(x, y)
+    x, y, values = x.flatten(), y.flatten(), xrdata.values.flatten()
+
+    data_points = pd.DataFrame.from_dict({variable: values, "x": x, "y": y})
+    res_sp = abs(xrdata[xdim_name].values[1] - xrdata[xdim_name].values[0]) / 2
+
+    allpol = []
+    for unique_value in np.unique(data_points[variable].values):
+        if np.isnan(unique_value):
+            continue
+
+        subsetdf = data_points.loc[data_points[variable] == unique_value]
+        geo_subsetdf = gpd.GeoDataFrame(
+            geometry=gpd.GeoSeries.from_xy(subsetdf["x"], subsetdf["y"], crs=crs)
+        )
+        # dem_vector['zone'] = 'a'
+        geo_subsetdf = geo_subsetdf.buffer(res_sp, cap_style="square")
+        total_union = unary_union(geo_subsetdf.geometry)
+        geo_subsetdf = gpd.GeoDataFrame(geometry=gpd.GeoSeries(total_union), crs=crs)
+        geo_subsetdf[variable] = unique_value
+        allpol.append(geo_subsetdf)
+
+    return pd.concat(allpol)
 
 def add_2dlayer_toxarrayr(imageasarray, xarraydata: xarray.Dataset, variable_name: str) -> xarray.Dataset:
     """
@@ -374,7 +434,6 @@ def from_xyxy_2polygon(x1: float, y1: float, x2: float, y2: float) -> Polygon:
             y1]
 
     return Polygon(list(zip(xpol, ypol)))
-
 
 def coordinates_fromtransform(transform, imgsize):
     """Create a longitude, latitude meshgrid based on the spatial affine.
