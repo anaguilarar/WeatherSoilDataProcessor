@@ -4,6 +4,9 @@ from spatialdata.soil_data import find_soil_textural_class_in_nparray
 import numpy as np
 from rosetta import SoilData, rosetta
 
+def check_percentage(value):
+    return value *0.1 if np.nanmax(value)>100 else value
+
 
 ## 'Sat. hydraulic conductivity, macropore, cm h-1'
 def calculate_sks(sand: float = None, 
@@ -186,8 +189,8 @@ def slu1(clay:float, sand:float) -> float:
 
 
 def get_layer_texture(soilxrdata_layer, texture_name = 'texture'):
-    sand = soilxrdata_layer.sand.values*0.1 if np.nanmax(soilxrdata_layer.sand.values) > 300 else soilxrdata_layer.sand.values
-    clay = soilxrdata_layer.clay.values*0.1 if np.nanmax(soilxrdata_layer.clay.values) > 300 else soilxrdata_layer.clay.values
-    texturemap = find_soil_textural_class_in_nparray(sand, clay).astype(float)
+    
+    sandclay = check_percentage(soilxrdata_layer[['sand', 'clay']].to_array().values)
+    texturemap = find_soil_textural_class_in_nparray(*sandclay).astype(float)
     texturemap[texturemap == 0] = np.nan
     return add_2dlayer_toxarrayr(texturemap, soilxrdata_layer, variable_name=texture_name)

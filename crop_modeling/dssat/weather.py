@@ -5,6 +5,8 @@ import pandas as pd
 import os
 from DSSATTools.weather import Weather
 from ..utils.u_weather import monthly_amplitude
+from ._base import DSSATFiles
+from .files_reading import delimitate_header_indices
 
 class DSSAT_Weather(Weather):
     """
@@ -28,6 +30,34 @@ class DSSAT_Weather(Weather):
     _df : pd.DataFrame
         The DataFrame with renamed columns and selected weather data.
     """
+    @staticmethod
+    def get_weather_asdf(file_path):
+        #lines = DSSATFiles.open_file(file_path)
+        #section_id = list(DSSATFiles.get_section_indices(lines, pattern= '@  DATE'))[0]
+        #section_header_str = lines[section_id]
+        #data_rows = []
+        #for i, line in enumerate(lines[section_id+1:]):
+        #    stiped_line = line.strip()
+        #    data_rows.append([strid for strid in stiped_line.split(' ') if strid != ''])
+        #header_indices = delimitate_header_indices(section_header_str)
+        
+        #header_names = [section_header_str[i:j].strip()
+        #            for i, j in header_indices]
+
+        wdata = DSSATFiles.extract_table_segment(file_path, '@  DATE')
+        wdata.iloc[:,1:] = wdata.iloc[:,1:].astype(float)
+        return wdata
+
+    @staticmethod
+    def get_coords(file_path):
+        lines = DSSATFiles.open_file(file_path)
+        for i in DSSATFiles.get_section_indices(lines, '@ INSI'):
+            lstripped = lines[i+1].strip()
+            datainline = [strid for strid in lstripped.split(' ') if strid != '']
+            
+            lat, long = float(datainline[1]), float(datainline[2])
+        return lat, long 
+    
     @staticmethod
     def get_dates_from_file(file_path):
         assert file_path.endswith('WTH'), 'the file is not a DSSAT compatible format file'

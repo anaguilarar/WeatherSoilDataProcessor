@@ -14,7 +14,7 @@ import glob
 from .files_reading import section_indices, delimitate_header_indices, join_row_using_header_indices
 from omegaconf import OmegaConf
 import subprocess
-
+from ._base import DSSATFiles
 
 def check_soil_id(management_pathfile, new_soil_id):
     
@@ -106,7 +106,7 @@ def create_DSSBatch(ExpFilePath: str, selected_treatments: Optional[list[str]]=N
     return None
 
 
-class DSSABase(object):
+class DSSABase(DSSATFiles):
     """
     A class for managing DSSAT-related file processing, configuration, and execution.
 
@@ -242,33 +242,6 @@ class DSSABase(object):
             config_path = os.path.join(pathiprocess, 'experimental_file_config.yaml')
             returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
             #if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
-    
-    @staticmethod
-    def open_file(path: str) -> List[str]:
-        """
-        Reads a text file and returns its lines as a list.
-
-        Parameters
-        ----------
-        path : str
-            Path to the DSSAT soil file.
-
-        Returns
-        -------
-        List[str]
-            A list of lines in the file.
-
-        Raises
-        ------
-        AssertionError
-            If the file does not exist at the specified path.
-        """
-        
-        assert os.path.exists(path)
-        with open(path, 'r', encoding="utf-8") as fn:
-            lines = fn.readlines()
-            
-        return lines
     
     def specific_paths(self):
         path = self._tmp_path if self._tmp_path.endswith('/') else self._tmp_path+'/'

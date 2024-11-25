@@ -1,5 +1,6 @@
 
 ## taken from https://github.com/AgroClimaticTools/dssat-pylib/blob/main/dssatpylib/util_read_dssat_out.py
+
 def delimitate_header_indices(section_header_str):
     start_indices = [0]+[i for i, character in enumerate(section_header_str)
                             if character == ' ' and section_header_str[i+1] != ' ']
@@ -31,4 +32,25 @@ def join_row_using_header_indices(section_header_str, section_line_str, row_to_r
 
     return ''.join(stline)+'\n'
 
-            
+def getting_line_inoutputfile(header, line):
+    """
+    this only works assuming that the variables are not space separated, and the only one is the initial planting
+    """
+    
+    dataline = [i for i in line.split(' ') if i != '']
+    newline = [' ']
+    count = 0
+    while len(newline) < (len(header)) and count < len(dataline):
+        if dataline[count].startswith('Initial'):
+            newline.append((dataline[count] + ' ' + dataline[count + 1]).strip())
+            count = count + 2
+            continue
+        elif dataline[count].startswith('Planting'):
+            newline.append((dataline[count] + ' '+ dataline[count + 1] + ' ' + dataline[count + 2]).strip())
+            count = count + 3
+            continue
+        else:
+            newline.append(dataline[count].strip())
+            count +=1
+    
+    return newline

@@ -5,8 +5,9 @@ from spatialdata.gis_functions import masking_rescaling_xrdata
 from tqdm import tqdm
 from spatialdata.data_fromconfig import get_weather_datacube, get_soil_datacube
 from spatialdata.xr_dict import CustomXarray
-
+from spatialdata.xr_dict import CustomXarray, from_dict_toxarray
 import numpy as np
+from .utils.process import set_encoding, check_crs_inxrdataset
 
 from typing import Any
 import pickle
@@ -110,7 +111,12 @@ class CM_SpatialData():
         
         print(f'loaded from {filepath}')
         return data
-
+    
+    def _save_asnc(self, xrdata, fn):
+        encoding = set_encoding(xrdata)
+        xrdata = check_crs_inxrdataset(xrdata)
+        xrdata.to_netcdf(fn, encoding = encoding, engine = self.config)
+        
     def _setup(self):
         self.climate = None
         self.soil = None
@@ -126,23 +132,31 @@ class CM_SpatialData():
         if soil: self.get_soil_data()
 
     
-    def get_climate_data(self):
+    def get_climate_data(self, export_data = False):
         if self.config.DATA.get('climate_data_cube_path', None):
             weather_datac =  self._open_dataset(self.config.DATA.climate_data_cube_path)
         else:
             weather_datac = get_weather_datacube(self.config)
             weather_datac = create_dimension(weather_datac, newdim_name=self.dim_names['climate'], isdate=False)
+            if export_data:
+                fn = fn if fn else f'weather_data{self.config.SPATIAL_INFO.engine}.nc'
+                self._save_asnc(weather_datac, fn)
         
         self.climate = weather_datac.rio.write_crs(get_crs_fromxarray(weather_datac)).rio.reproject(self.config.SPATIAL_INFO.crs)
         self.climate.attrs['crs'] = self.config.SPATIAL_INFO.crs
         
-    def get_soil_data(self):
+    def get_soil_data(self, export_data = False, fn = None):
         if self.config.DATA.get('soil_datacube_path', None):
             soil_datac =  self._open_dataset(self.config.DATA.soil_datacube_path)
 
         else:
             soil_datac = get_soil_datacube(self.config)
-        
+            if export_data:
+                customdict = {k: CustomXarray(v, dataformat = 'CHW').custom_dict for k,v in soil_datac.items()}
+                soil_datac =create_dimension({k:from_dict_toxarray(v, dimsformat='CHW') for i, (k, v) in enumerate(customdict.items()) if i <4}, newdim_name= 'depth', isdate=False)
+                fn = fn if fn else f'soil_data{self.config.SPATIAL_INFO.engine}.nc'
+                self._save_asnc(soil_datac, fn)
+
         if isinstance(soil_datac, dict):self.soil = {k: reproject_xrdata(v,target_crs=self.config.SPATIAL_INFO.crs) for k, v in soil_datac.items()}
         else:
             self.soil = soil_datac.rio.write_crs(get_crs_fromxarray(soil_datac)).rio.reproject(self.config.SPATIAL_INFO.crs)
