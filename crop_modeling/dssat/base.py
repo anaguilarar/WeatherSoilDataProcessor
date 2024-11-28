@@ -11,10 +11,10 @@ from ..utils.process import summarize_datacube_as_df
 from .files_export import from_soil_to_dssat,from_weather_to_dssat
 from .management import DSSATManagement_base
 import glob
-from .files_reading import section_indices, delimitate_header_indices, join_row_using_header_indices
+from .files_reading import delimitate_header_indices, join_row_using_header_indices
 from omegaconf import OmegaConf
 import subprocess
-from ._base import DSSATFiles
+from ._base import DSSATFiles, section_indices
 
 def check_soil_id(management_pathfile, new_soil_id):
     
@@ -164,6 +164,7 @@ class DSSABase(DSSATFiles):
         plantingWindow: Optional[int] = None,
         fertilizer: Optional[bool] = None,
         index_soilwat: int = 1,
+        use_r = False
         ) -> None:
         """
         Set up the management configuration and create DSSAT experiment files.
@@ -192,8 +193,8 @@ class DSSABase(DSSATFiles):
         self.specific_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
 
-        dssatm = DSSATManagement_base(crop, cultivar, 
-                                planting_date=planting_date, harvesting_date= harvesting_date)
+        dssatm = DSSATManagement_base(crop = crop, variety = cultivar, 
+                                planting_date=planting_date, harvesting_date= harvesting_date, n_planting_windows = plantingWindow)
         
         for pathtiprocess in self._process_paths:
             output = dssatm.create_file_using_rdssat(template, pathtiprocess, roi_id = roi_id, plantingWindow = plantingWindow, 

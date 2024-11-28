@@ -6,7 +6,7 @@ import os
 from DSSATTools.weather import Weather
 from ..utils.u_weather import monthly_amplitude
 from ._base import DSSATFiles
-from .files_reading import delimitate_header_indices
+
 
 class DSSAT_Weather(Weather):
     """

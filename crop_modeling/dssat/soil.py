@@ -4,7 +4,8 @@ import pandas as pd
 
 from typing import List
 
-from .files_reading import section_indices, delimitate_header_indices
+from ._base import section_indices
+from .files_reading import delimitate_header_indices
 from ..utils.u_soil import find_soil_textural_class, calculate_sks, slu1
 from DSSATTools.soil import SoilProfile, SoilLayer
             

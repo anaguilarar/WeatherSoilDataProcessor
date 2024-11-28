@@ -7,7 +7,7 @@ import os
 from datetime import datetime
 from ..utils.process import check_percentage
 
-from .files_reading import section_indices
+from ._base import section_indices
 
 def check_coords(path: str, long, lat, country) -> None:
         
