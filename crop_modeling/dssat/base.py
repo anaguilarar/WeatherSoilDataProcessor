@@ -14,7 +14,7 @@ import glob
 from .files_reading import delimitate_header_indices, join_row_using_header_indices
 from omegaconf import OmegaConf
 import subprocess
-from ._base import DSSATFiles, section_indices
+from ._base import DSSATFiles, section_indices, coords_from_soil_file
 
 def check_soil_id(management_pathfile, new_soil_id):
     
@@ -193,18 +193,30 @@ class DSSABase(DSSATFiles):
         self.specific_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
 
-        dssatm = DSSATManagement_base(crop = crop, variety = cultivar, 
-                                planting_date=planting_date, harvesting_date= harvesting_date, n_planting_windows = plantingWindow)
+        dssatm = DSSATManagement_base(path = template, crop = crop, variety = cultivar, 
+                                planting_date=planting_date, harvesting_date= harvesting_date,
+                                n_planting_windows = plantingWindow)
         
-        for pathtiprocess in self._process_paths:
-            output = dssatm.create_file_using_rdssat(template, pathtiprocess, roi_id = roi_id, plantingWindow = plantingWindow, 
+        for pathiprocess in self._process_paths:
+            if use_r:
+                
+                output = dssatm.create_file_using_rdssat(template, pathiprocess, roi_id = roi_id, plantingWindow = plantingWindow, 
                                             fertilizer = fertilizer, index_soilwat = index_soilwat)
+            else:
+                
+                soil = glob.glob(pathiprocess+'/*.SOL*')
+                lat, long = coords_from_soil_file(soil[0])
+                
+                output = dssatm.create_file(template, pathiprocess, roi_id = roi_id,plantingWindow = plantingWindow,
+                        fertilizer = fertilizer, index_soilwat = index_soilwat,
+                        long = long, lat = lat)
+                self.crop_code = dssatm.crop_code
 
             if output is None:
                 continue
-            experiment_config = OmegaConf.load(os.path.join(pathtiprocess, 'experimental_file_config.yaml'))
+            experiment_config = OmegaConf.load(os.path.join(pathiprocess, 'experimental_file_config.yaml'))
             
-            management_pathfile = glob.glob(pathtiprocess+'/*.{}*'.format(experiment_config.MANAGEMENT.crop_code))
+            management_pathfile = glob.glob(pathiprocess+'/*.{}*'.format(experiment_config.MANAGEMENT.crop_code))
             print(f'experimental file created: {management_pathfile}')
             
             check_soil_id(management_pathfile, experiment_config.SOIL.ID_SOIL )
@@ -229,6 +241,24 @@ class DSSABase(DSSATFiles):
         for pathtiprocess in self._process_paths:
             crop_manager.write(pathtiprocess)
     
+    def run(self, crop_code, bin_path = 'C:/DSSAT48/DSCSM048.exe') -> None:
+        process_completed = {}
+        for pathiprocess in self._process_paths:
+            soil = glob.glob(pathiprocess+'/*.SOL*')
+            if len(soil)==0:
+                pathiprocess[os.path.basename(pathiprocess)] = False 
+                continue
+            if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): os.rename(soil[0], os.path.join(pathiprocess, 'TR.SOL'))
+            
+            exp_pathfile = glob.glob(pathiprocess+'/*.{}X*'.format(crop_code))
+            create_DSSBatch(exp_pathfile[0])
+            
+            batch_pathfile = glob.glob(pathiprocess+'/*.V48*')
+            subprocess.call([bin_path,'B' , os.path.basename(batch_pathfile[0])] , shell= True, cwd=pathiprocess)
+            process_completed[os.path.basename(pathiprocess)] = os.path.exists(
+                os.path.join(pathiprocess,'Summary.OUT'))
+        return process_completed
+                
     def run_using_r(self) -> None:
         """
         Run DSSAT simulations using an R script.

@@ -120,11 +120,15 @@ class Management_FileModifier(DSSATFileModifier):
         weather_station_name = kwargs.get('weather_stname',None) 
         soil_id = kwargs.get('soil_id',None)
         elevation = kwargs.get('elevation',None)
+        long = kwargs.get('long',None)
+        lat = kwargs.get('lat',None)
+        
                 
         dflist[0]['WSTA....'] = weather_station_name if weather_station_name else -99
         dflist[0]['ID_SOIL'] = soil_id if soil_id else -99
         dflist[1]['.....ELEV'] = elevation if elevation else 390
-        
+        dflist[1]['...........XCRD'] = long if long else 90.
+        dflist[1]['...........YCRD'] = lat if lat else 5.
         newsection = [self.write_df_asff(dflist[j], headerff_style[j], rowff_style[j]) for j in range(len(headerff_style))]
         newlines= [self.lines[self._section_idx['FIELDS']]] + flat_list_of_list(newsection)
         
@@ -372,6 +376,8 @@ class DSSATManagement_base(Management_FileModifier):
         self.n_windows = kwargs.get('plantingWindow',1)
         self.fertilizer = kwargs.get('fertilizer',False) # TODO: implement true scenario
         self.index_soilwat = kwargs.get('index_soilwat',1)
+        self._long = kwargs.get('long',None)
+        self._lat = kwargs.get('lat',None)
         
     def soil_data(self) -> Tuple[str, pd.DataFrame]:
         """
@@ -439,7 +445,8 @@ class DSSATManagement_base(Management_FileModifier):
         trlines = self.treatment_modifier()
         cullines = self.cultivar_modifier(crop = self.crop_code, variety_id = self.variety)
         fllines = self.fields_modifier(weather_stname = config_management.WEATHER.file_name,
-                    soil_id = config_management.SOIL.ID_SOIL)
+                    soil_id = config_management.SOIL.ID_SOIL,
+                    long = config_management.SOIL.long, lat = config_management.SOIL.lat)
         initlines = self.initial_conditions_modifier(sdul = sdul, slb = slb, slll = slll, ind_soil_water = ind_soil_water, 
                                                      crop = self.crop_code)
         pllines = self.planting_modifier()
@@ -466,7 +473,9 @@ class DSSATManagement_base(Management_FileModifier):
             for i, sect in enumerate(allsections):
                 for line in sect:
                     fn.write(line)
-                if i<len(allsections): fn.write('\n')
+                if i<len(allsections): fn.write('\n') #TODO check automatic management last
+                
+        return fnman
         
     def management_configuration_file(self, filex_template: str, number_years: int, soilid: str,
                              soildata: pd.DataFrame, weather_fn: str) -> Dict:
@@ -517,6 +526,8 @@ class DSSATManagement_base(Management_FileModifier):
                 'SDUL': soildata[0].tolist(),
                 'SLLL': soildata[1].tolist(),
                 'SLB': soildata[2].tolist(),
+                'long': self._long,
+                'lat': self._lat
             },
             'WEATHER':{
                 'file_name': weather_fn[:-4] ## the .WTH extension is not saved
