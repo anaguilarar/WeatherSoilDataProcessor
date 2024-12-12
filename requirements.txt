@@ -8,12 +8,14 @@ omegaconf
 panda
 python_dateutil
 PyYAML
+plotly
 rasterio
 Requests
 rioxarray
 scipy
 Shapely
 soilgrids
+unidecode
 tqdm
 widgetsnbextension
 xarray
