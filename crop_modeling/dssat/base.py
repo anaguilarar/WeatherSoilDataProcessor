@@ -156,8 +156,6 @@ def run_batch_dssat(path, crop_code, bin_path):
 
 def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_folder = False):
 
-    if bin_path is None:
-        bin_path = BIN_PATH
     exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
     if len(exp_pathfile)==0:
         print(' There is no experimental file, please generated first')
@@ -216,7 +214,7 @@ def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder =
         
     subprocess.run([BIN_PATH, 'C', exp_pathfile, str(experimentid)],
                     cwd=tmppath, capture_output=True, text=True,
-                    shell= True, env={"DSSAT_HOME": DSSAT_HOME, })
+                    env={"DSSAT_HOME": DSSAT_HOME, })
     if os.path.exists(
         os.path.join(tmppath,'Summary.OUT')):
         valtoreturn = {os.path.basename(path): True}
@@ -367,7 +365,7 @@ class DSSATBase(DSSATFiles):
             crop_manager.write(pathtiprocess)
     
     def run(self, crop_code, crop, planting_window, bin_path = None, parallel_tr= True, ncores = 10, remove_tmp_folder = False) -> None:
-        process_completed = {}
+        
         """
         Run DSSAT simulations for all processing paths.
 
@@ -391,6 +389,7 @@ class DSSATBase(DSSATFiles):
         Dict[str, bool]
             Dictionary with processing path names as keys and success status as values.
         """
+        process_completed = {}
         if parallel_tr:
             for pathiprocess in self._process_paths:
                     if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
@@ -416,13 +415,25 @@ class DSSATBase(DSSATFiles):
                                     except Exception as exc:
                                             print(f"Request for treatment {tr} generated an exception: {exc}")
                     
-                    process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
-                
         else:
-            result = []
-            for pathiprocess in self._process_paths:
-                result.append(run_batch_dssat(pathiprocess, crop_code, bin_path))
             
+            for pathiprocess in self._process_paths:
+                if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
+                            print(f'soil file not found in :{pathiprocess}')
+                            process_completed[os.path.basename(pathiprocess)] = False 
+                            continue
+                file_path_pertr = {}
+                
+                for tr in range(1,planting_window+1):
+                    if bin_path is None:
+                        file_path_pertr[str(tr)] = run_experiment_dssat_bin(pathiprocess, tr, 
+                                                crop_code,crop, remove_folder = remove_tmp_folder)
+                    else:
+                        file_path_pertr[str(tr)] =run_experiment_dssat(pathiprocess, tr, 
+                                                            crop_code,bin_path, remove_folder = remove_tmp_folder)
+            
+        process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+
         return process_completed
                 
     def run_using_r(self) -> None:
