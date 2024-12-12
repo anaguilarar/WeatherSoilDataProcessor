@@ -1,7 +1,9 @@
 
 import os
 from DSSATTools.base.sections import Section, clean_comments
-from DSSATTools.crop import Crop
+from DSSATTools.crop import CROPS_MODULES, VERSION, Crop
+import os
+
 from typing import List
 import pandas as pd
 from typing import Optional
@@ -18,7 +20,7 @@ from ._base import DSSATFiles, section_indices, coords_from_soil_file
 from multiprocessing import Pool
 import concurrent.futures
 import shutil
-
+import platform
 
 def check_soil_id(management_pathfile, new_soil_id):
     
@@ -152,7 +154,10 @@ def run_batch_dssat(path, crop_code, bin_path):
         os.path.join(path,'Summary.OUT'))}
             
 
-def run_experiment_dssat(path, experimentid,crop_code, bin_path, remove_folder = False):
+def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_folder = False):
+
+    if bin_path is None:
+        bin_path = BIN_PATH
     exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
     if len(exp_pathfile)==0:
         print(' There is no experimental file, please generated first')
@@ -166,10 +171,52 @@ def run_experiment_dssat(path, experimentid,crop_code, bin_path, remove_folder =
     
     tmppath = os.path.join(path, f'_{experimentid}')
     create_dssat_tmp_env(path, tmppath, exp_pathfile)
-    
+
     subprocess.call([bin_path, 'C', exp_pathfile, str(experimentid)],
                     stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                     shell= True, cwd=tmppath)
+    if os.path.exists(
+        os.path.join(tmppath,'Summary.OUT')):
+        valtoreturn = {os.path.basename(path): True}
+        if not os.path.exists(os.path.join(path, f'Summary_{experimentid}.OUT')):
+           shutil.copyfile(os.path.join(tmppath, 'Summary.OUT'), os.path.join(path,f'Summary_{experimentid}.OUT'))
+        if remove_folder:
+            shutil.rmtree(tmppath, ignore_errors=False, onerror=None)
+        
+    else:
+        valtoreturn = {os.path.basename(path): False}
+    return valtoreturn
+
+
+def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder = False):
+    from DSSATTools.run import CONFILE, CRD_PATH, SLD_PATH, DSSAT_HOME, BIN_PATH, STD_PATH
+    exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
+    if len(exp_pathfile)==0:
+        print(' There is no experimental file, please generated first')
+        return {os.path.basename(path): False}
+    if len(exp_pathfile)>1:
+        print(' There are more than one experimental file, please only leave one')
+        return {os.path.basename(path): False}
+        
+    exp_pathfile = os.path.basename(exp_pathfile[0])
+    #create_DSSBatch(exp_pathfile[0])
+    
+    tmppath = os.path.join(path, f'_{experimentid}')
+    create_dssat_tmp_env(path, tmppath, exp_pathfile)
+
+    wth_path = os.path.join(tmppath,'WTHE0001')
+
+    with open(os.path.join(tmppath, CONFILE), 'w') as f:
+        f.write(f'WED    {wth_path}\n')
+        f.write(f'M{crop_code}    {tmppath} dscsm048 {CROPS_MODULES[crop]}{VERSION}\n')
+        f.write(f'CRD    {CRD_PATH}\n')
+        f.write(f'PSD    {os.path.join(DSSAT_HOME, "Pest")}\n')
+        f.write(f'SLD    {SLD_PATH}\n')
+        f.write(f'STD    {STD_PATH}\n')
+        
+    subprocess.run([BIN_PATH, 'C', exp_pathfile, str(experimentid)],
+                    cwd=tmppath, capture_output=True, text=True,
+                    shell= True, env={"DSSAT_HOME": DSSAT_HOME, })
     if os.path.exists(
         os.path.join(tmppath,'Summary.OUT')):
         valtoreturn = {os.path.basename(path): True}
@@ -319,7 +366,7 @@ class DSSATBase(DSSATFiles):
         for pathtiprocess in self._process_paths:
             crop_manager.write(pathtiprocess)
     
-    def run(self, crop_code, planting_window, bin_path = 'C:/DSSAT48/DSCSM048.exe', parallel_tr= True, ncores = 10, remove_tmp_folder = False) -> None:
+    def run(self, crop_code, crop, planting_window, bin_path = None, parallel_tr= True, ncores = 10, remove_tmp_folder = False) -> None:
         process_completed = {}
         """
         Run DSSAT simulations for all processing paths.
@@ -330,7 +377,7 @@ class DSSATBase(DSSATFiles):
             Crop code for DSSAT simulations.
         planting_window : int
             Number of treatments to simulate.
-        bin_path : str, default='C:/DSSAT48/DSCSM048.exe'
+        bin_path : str, optional
             Path to the DSSAT executable.
         parallel_tr : bool, default=True
             Whether to run treatments in parallel.
@@ -354,7 +401,11 @@ class DSSATBase(DSSATFiles):
                     file_path_pertr = {}
 
                     with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
-                            future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
+                            if bin_path is None:
+                                future_to_tr ={executor.submit(run_experiment_dssat_bin, pathiprocess, i, 
+                                                            crop_code,crop, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
+                            else:
+                                future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
                                                             crop_code,bin_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
 
                             for future in concurrent.futures.as_completed(future_to_tr):
