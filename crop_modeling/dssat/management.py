@@ -159,7 +159,7 @@ class Management_FileModifier(DSSATFileModifier):
             orig_df[1].loc[:,'@C'] = i+1
             listesect = []
             for j in range(len(headerff_style)):
-                dssatlines = self.write_df_asff(dflist[j], headerff_style[j], rowff_style[j])
+                dssatlines = self.write_df_asff(orig_df[j], headerff_style[j], rowff_style[j])
                 if i>=9: 
                     for z in range(1,len(dssatlines)): dssatlines[z] = str(i+1) + dssatlines[z][2:]
                 
@@ -265,7 +265,7 @@ class DSSATManagement_base(Management_FileModifier):
         return {
         'weather': 'WTH',
         'soil' : 'SOL',
-        'experiment' : 'MZX'
+        'experiment' : 'X'
         }
         
     @property
@@ -296,7 +296,7 @@ class DSSATManagement_base(Management_FileModifier):
         'Cabbage': "CB",
         'Sugarcane': "SC",
         "Wheat": "WH",
-        "Beans": "BN",
+        "Bean": "BN",
         "Cassava": "CS"
         }
         
@@ -339,7 +339,7 @@ class DSSATManagement_base(Management_FileModifier):
         """
         weather_dates = DSSAT_Weather.get_dates_from_file(self._weather[0])
         years = [datetime.strptime(d,  '%Y%j').year for d in weather_dates]
-        return years[-1] - years[0]
+        return abs(years[-1] - self.planting_date.year)
     
 
     def check_files(self, template: str) -> None:
@@ -371,7 +371,7 @@ class DSSATManagement_base(Management_FileModifier):
         **kwargs : dict
             General experiment configuration options, such as: output_name, roi_id, plantingWindow, and index_soilwat.
         """
-        self.output_name = kwargs.get('output_name', 'EXP')
+        self.output_name = kwargs.get('output_name', 'EXPS')
         self.roi_id = kwargs.get('roi_id', 1)
         self.n_windows = kwargs.get('plantingWindow',1)
         self.fertilizer = kwargs.get('fertilizer',False) # TODO: implement true scenario
@@ -441,7 +441,7 @@ class DSSATManagement_base(Management_FileModifier):
         ind_soil_water = config_management.SOIL.index_soilwat
         #path = config.MANAGEMENT.template
         nyears = config_management.GENERAL.number_years 
-
+        
         trlines = self.treatment_modifier()
         cullines = self.cultivar_modifier(crop = self.crop_code, variety_id = self.variety)
         fllines = self.fields_modifier(weather_stname = config_management.WEATHER.file_name,
@@ -451,6 +451,7 @@ class DSSATManagement_base(Management_FileModifier):
                                                      crop = self.crop_code)
         pllines = self.planting_modifier()
         hrlines = self.harvesting_modifier()
+        
         simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears)
         autman_listlines = self.automatic_management_modifier()
         
@@ -464,7 +465,7 @@ class DSSATManagement_base(Management_FileModifier):
         
         
         allsections = [trlines, cullines, fllines, initlines, pllines, hrlines, siumautolines]
-        fnman = os.path.join(os.path.dirname(config_path), f'{config_management.GENERAL.output_name}0001.MZX')
+        fnman = os.path.join(os.path.dirname(config_path), f'{config_management.GENERAL.output_name}0001.{self.crop_code}X')
         
         with open(fnman, 'w') as fn:
             for line in self.lines[:self._section_idx['TREATMENTS']]:
@@ -506,8 +507,8 @@ class DSSATManagement_base(Management_FileModifier):
             'GENERAL': {
                 'roi_id' : 1,
                 'working_path': self.path,
-                'number_years': number_years,
-                'output_name': 'EXP'
+                'number_years': 1 if number_years == 0 else number_years,
+                'output_name': self.output_name
             },
             'MANAGEMENT': {
                 'template_path':  filex_template,

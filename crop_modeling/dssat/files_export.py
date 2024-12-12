@@ -1,21 +1,29 @@
 from .soil import DSSATSoil_fromSOILGRIDS, DSSATSoil_base
 from .weather import DSSAT_Weather
+from .files_reading import values_type_inffstyle
 
 import numpy as np
 import os
 
 from datetime import datetime
 from ..utils.process import check_percentage
+import fortranformat as ff
 
 from ._base import section_indices
 
 def check_coords(path: str, long, lat, country) -> None:
-        
+    fmt = '1X,A11,1X,A11,1X,F7.3,1X,F8.3,A24'
+    _, formattypes = values_type_inffstyle(fmt)
+    
     lines = DSSATSoil_base.open_file(path)
     infoindices = list(section_indices(lines, pattern='@'))
     
     if lines[infoindices[0]+1].startswith('        '):
-        lines[infoindices[0]+1] = f' Tempor      {country[:3]}           {lat}  {long} Unclassified\n'    
+        #lilines = [i for i in lines[infoindices[0]+1].split(' ') if i!= '']
+        lilines = ['Tempor', country[:3], lat, long, 'Unclassified\n']
+        vals = [formattypes[i](val) for i, val in enumerate(lilines)]
+        lines[infoindices[0]+1] = ff.FortranRecordWriter(fmt).write(vals)
+        # = f' Tempor      {country[:3]}           {lat}  {long} Unclassified\n'    
         with open(path, 'w') as file:
             for line in lines:
                 file.write(f"{line}")
@@ -103,7 +111,7 @@ def from_soil_to_dssat(df, group_by: str = 'group', depth_name ='depth',
             if not os.path.exists(outputpathgroup):
                 os.mkdir(outputpathgroup)
 
-            fn = os.path.join(outputpathgroup, outputfngroup+'.SOL')
+            fn = os.path.join(outputpathgroup, 'TR.SOL')
             ddsat_soilgrid.write(fn)
             
             check_coords(fn, long=long, lat= lat, country = country)

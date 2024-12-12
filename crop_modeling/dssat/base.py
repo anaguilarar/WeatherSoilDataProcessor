@@ -1,7 +1,7 @@
 
 import os
 from DSSATTools.base.sections import Section, clean_comments
-from DSSATTools.crop import Crop,GENOTYPE_PATH
+from DSSATTools.crop import Crop
 from typing import List
 import pandas as pd
 from typing import Optional
@@ -15,11 +15,15 @@ from .files_reading import delimitate_header_indices, join_row_using_header_indi
 from omegaconf import OmegaConf
 import subprocess
 from ._base import DSSATFiles, section_indices, coords_from_soil_file
+from multiprocessing import Pool
+import concurrent.futures
+import shutil
+
 
 def check_soil_id(management_pathfile, new_soil_id):
     
 
-    lines = DSSABase.open_file(management_pathfile[0])
+    lines = DSSATBase.open_file(management_pathfile[0])
     section_id = list(section_indices(lines, pattern= '*FIELDS'))[0]+1
     section_header_str = lines[section_id]
     header_indices = delimitate_header_indices(section_header_str)
@@ -43,7 +47,28 @@ def check_soil_id(management_pathfile, new_soil_id):
             for line in lines:
                 file.write(f"{line}")
                 
-                
+
+def create_dssat_tmp_env(source_path, tmp_path, exp_file):
+    if not os.path.exists(tmp_path): os.mkdir(tmp_path)
+    
+    wth = 'WTHE0001.WTH'
+    soil = 'TR.SOL'
+    crop = glob.glob(source_path+'/*.CUL*')
+    eco = glob.glob(source_path+'/*.ECO*')
+    spe = glob.glob(source_path+'/*.SPE*')
+    
+    
+    shutil.copy2(os.path.join(source_path, soil), tmp_path)
+    shutil.copy2(os.path.join(source_path, exp_file), tmp_path)
+    shutil.copy2(os.path.join(source_path, wth), tmp_path)
+    shutil.copy2(crop[0], tmp_path)
+    shutil.copy2(eco[0], tmp_path)
+    shutil.copy2(spe[0], tmp_path)
+    
+    
+    
+
+  
 def create_DSSBatch(ExpFilePath: str, selected_treatments: Optional[list[str]]=None, 
                     command: str = 'DSCSM048.EXE Q DSSBatch.v48'):
     """
@@ -105,8 +130,60 @@ def create_DSSBatch(ExpFilePath: str, selected_treatments: Optional[list[str]]=N
         Fbatch.write(batch_text)
     return None
 
+def run_batch_dssat(path, crop_code, bin_path):
+    #bin_path = 'C:/DSSAT48/DSCSM048.exe'
+    soil = glob.glob(path+'/*.SOL*')
+    if len(soil)==0:
+        print(f'soil file not found in :{path}')
+        #pathiprocess[os.path.basename(pathiprocess)] = False 
+        return {os.path.basename(path): False}
+    if not os.path.exists(os.path.join(path, 'TR.SOL')): 
+        os.rename(soil[0], os.path.join(path, 'TR.SOL'))
+    
+    exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
+    create_DSSBatch(exp_pathfile[0])
 
-class DSSABase(DSSATFiles):
+    batch_pathfile = glob.glob(path+'/*.V48*')
+    subprocess.call([bin_path,'B' , os.path.basename(batch_pathfile[0])] ,
+                    shell= True, cwd=path,
+                    
+                    stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+    return {os.path.basename(path): os.path.exists(
+        os.path.join(path,'Summary.OUT'))}
+            
+
+def run_experiment_dssat(path, experimentid,crop_code, bin_path, remove_folder = False):
+    exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
+    if len(exp_pathfile)==0:
+        print(' There is no experimental file, please generated first')
+        return {os.path.basename(path): False}
+    if len(exp_pathfile)>1:
+        print(' There are more than one experimental file, please only leave one')
+        return {os.path.basename(path): False}
+        
+    exp_pathfile = os.path.basename(exp_pathfile[0])
+    #create_DSSBatch(exp_pathfile[0])
+    
+    tmppath = os.path.join(path, f'_{experimentid}')
+    create_dssat_tmp_env(path, tmppath, exp_pathfile)
+    
+    subprocess.call([bin_path, 'C', exp_pathfile, str(experimentid)],
+                    stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    shell= True, cwd=tmppath)
+    if os.path.exists(
+        os.path.join(tmppath,'Summary.OUT')):
+        valtoreturn = {os.path.basename(path): True}
+        if not os.path.exists(os.path.join(path, f'Summary_{experimentid}.OUT')):
+           shutil.copyfile(os.path.join(tmppath, 'Summary.OUT'), os.path.join(path,f'Summary_{experimentid}.OUT'))
+        if remove_folder:
+            shutil.rmtree(tmppath, ignore_errors=False, onerror=None)
+        
+    else:
+        valtoreturn = {os.path.basename(path): False}
+    return valtoreturn
+
+
+class DSSATBase(DSSATFiles):
     """
     A class for managing DSSAT-related file processing, configuration, and execution.
 
@@ -140,7 +217,7 @@ class DSSABase(DSSATFiles):
             - country : str, optional
                 Country code or name for soil data.
         """
-        self._process_paths = []
+        self._process_paths = None
         assert os.path.exists(self.path)
         
         self.site = kwargs.get('site', None)
@@ -190,7 +267,7 @@ class DSSABase(DSSATFiles):
         index_soilwat : int, default=1
             Soil water index for the experiment.
         """
-        self.specific_paths()
+        if self._process_paths is None: self.find_envworking_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
 
         dssatm = DSSATManagement_base(path = template, crop = crop, variety = cultivar, 
@@ -222,7 +299,7 @@ class DSSABase(DSSATFiles):
             check_soil_id(management_pathfile, experiment_config.SOIL.ID_SOIL )
             
     
-    def set_up_crop(self, crop: str, cultivar: str, cultivar_template: str) -> None:
+    def set_up_crop(self, crop: str, cultivar: str, cultivar_template: str = None) -> None:
         """
         Set up crop and cultivar configurations.
 
@@ -237,26 +314,64 @@ class DSSABase(DSSATFiles):
         """
 
         crop_manager = DSSATCrop_base(crop.lower(), cultivar_code=cultivar)
-        crop_manager.update_cultivar_using_path(cultivar_template)
+        if cultivar_template is not None:
+            crop_manager.update_cultivar_using_path(cultivar_template)
         for pathtiprocess in self._process_paths:
             crop_manager.write(pathtiprocess)
     
-    def run(self, crop_code, bin_path = 'C:/DSSAT48/DSCSM048.exe') -> None:
+    def run(self, crop_code, planting_window, bin_path = 'C:/DSSAT48/DSCSM048.exe', parallel_tr= True, ncores = 10, remove_tmp_folder = False) -> None:
         process_completed = {}
-        for pathiprocess in self._process_paths:
-            soil = glob.glob(pathiprocess+'/*.SOL*')
-            if len(soil)==0:
-                pathiprocess[os.path.basename(pathiprocess)] = False 
-                continue
-            if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): os.rename(soil[0], os.path.join(pathiprocess, 'TR.SOL'))
+        """
+        Run DSSAT simulations for all processing paths.
+
+        Parameters
+        ----------
+        crop_code : str
+            Crop code for DSSAT simulations.
+        planting_window : int
+            Number of treatments to simulate.
+        bin_path : str, default='C:/DSSAT48/DSCSM048.exe'
+            Path to the DSSAT executable.
+        parallel_tr : bool, default=True
+            Whether to run treatments in parallel.
+        ncores : int, default=10
+            Number of cores to use for parallel processing.
+        remove_tmp_folder : bool, default=False
+            Whether to remove temporary folders after simulations.
+
+        Returns
+        -------
+        Dict[str, bool]
+            Dictionary with processing path names as keys and success status as values.
+        """
+        if parallel_tr:
+            for pathiprocess in self._process_paths:
+                    if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
+                            print(f'soil file not found in :{pathiprocess}')
+                            process_completed[os.path.basename(pathiprocess)] = False 
+                            continue
+                            
+                    file_path_pertr = {}
+
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
+                            future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
+                                                            crop_code,bin_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
+
+                            for future in concurrent.futures.as_completed(future_to_tr):
+                                    tr = future_to_tr[future]
+                                    try:
+                                            file_path_pertr[str(tr)] = future.result()
+                                            
+                                    except Exception as exc:
+                                            print(f"Request for treatment {tr} generated an exception: {exc}")
+                    
+                    process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+                
+        else:
+            result = []
+            for pathiprocess in self._process_paths:
+                result.append(run_batch_dssat(pathiprocess, crop_code, bin_path))
             
-            exp_pathfile = glob.glob(pathiprocess+'/*.{}X*'.format(crop_code))
-            create_DSSBatch(exp_pathfile[0])
-            
-            batch_pathfile = glob.glob(pathiprocess+'/*.V48*')
-            subprocess.call([bin_path,'B' , os.path.basename(batch_pathfile[0])] , shell= True, cwd=pathiprocess)
-            process_completed[os.path.basename(pathiprocess)] = os.path.exists(
-                os.path.join(pathiprocess,'Summary.OUT'))
         return process_completed
                 
     def run_using_r(self) -> None:
@@ -274,17 +389,22 @@ class DSSABase(DSSATFiles):
             returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
             #if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
     
-    def specific_paths(self):
-        path = self._tmp_path if self._tmp_path.endswith('/') else self._tmp_path+'/'
-        list_files = glob.glob(path+'**/*.{}*'.format('WTH'),recursive=True)
+    def find_envworking_paths(self):
+        folders = [i for i in os.listdir(self._tmp_path) if os.path.isdir(os.path.join(self._tmp_path,i))]
+        list_files = []
+        for folder in folders: 
+            pathsin = glob.glob(os.path.join(self._tmp_path, folder)+'/*.{}*'.format('WTH')) 
+            if pathsin: list_files.append(pathsin[0])
+
         #list_files = glob.glob(self._tmp_path+'/*.{}*'.format('SOL'))
         self._process_paths = [os.path.dirname(fn) for fn in list_files]
+        return self._process_paths
     
     def from_datacube_to_dssatfiles(
             self,
             xrdata,
             data_source: str = 'climate',
-            dim_name: str = 'date',
+            dim_name: str = None,
             target_crs: str = 'EPSG:4326',
             group_by: Optional[str] = None,
             group_codes: Optional[dict] = None,
@@ -313,6 +433,9 @@ class DSSABase(DSSATFiles):
             Data summarized as a DataFrame.
         """
         
+        if not dim_name:
+            dim_name = 'date' if data_source == 'climate' else 'depth'
+            
         dfdata = summarize_datacube_as_df(xrdata, dimension_name= dim_name, group_by = group_by, project_to= target_crs)
         
         if data_source == 'climate':
