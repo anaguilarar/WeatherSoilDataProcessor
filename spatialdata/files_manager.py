@@ -346,7 +346,9 @@ class SoilFolderManager:
         paths_dict = {}
 
         for var in self.variables:
-            paths_dict[var] = self.variable_path(var, units_string = units_string)
+            varinfo = self.variable_path(var, units_string = units_string)
+            if varinfo is not None:
+                paths_dict[var] = varinfo
         
         depths_available = [self.extract_detph(v, k, units = units_string) for k,v in paths_dict.items()]
         self.depths = self._sort_depths(np.unique(depths_available))[0]
@@ -365,6 +367,10 @@ class SoilFolderManager:
     def variable_path(self, variable, units_string = 'cm'):
         
         variable_paths = self._check_variable_paths(variable)
+        if len(variable_paths) == 0:
+            print(f'there is not data for this variable {variable}')
+            return None
+        
         self._extract_depths(variable, units_string = units_string)
 
         return [variable_paths[i] for i in self._depthssorted]

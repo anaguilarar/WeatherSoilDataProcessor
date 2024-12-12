@@ -20,10 +20,8 @@ from typing import List, Optional, Dict, Tuple, Union
 
 
 
-def xrarray_to_categorical_polygon(xrdata, variable: str, 
-    xdim_name: str = 'x', 
-    ydim_name: str = 'y', 
-    crs: str = None
+def xrarray_to_categorical_polygon(
+    xrdata, variable: str, xdim_name: str = "x", ydim_name: str = "y", crs: str = None
 ) -> gpd.GeoDataFrame:
     """
     Converts a categorical variable from an xarray dataset into a polygon-based GeoDataFrame.
@@ -33,7 +31,7 @@ def xrarray_to_categorical_polygon(xrdata, variable: str,
     xrdata : xarray.Dataset
         The xarray dataset containing the variable to convert.
     variable : str
-        The name of the variable.
+        The name of the variable in `xrdata` to process.
     xdim_name : str, optional
         Name of the x-coordinate dimension in the xarray dataset, by default 'x'.
     ydim_name : str, optional
@@ -58,7 +56,7 @@ def xrarray_to_categorical_polygon(xrdata, variable: str,
     x, y, values = x.flatten(), y.flatten(), xrdata.values.flatten()
 
     data_points = pd.DataFrame.from_dict({variable: values, "x": x, "y": y})
-    res_sp = abs(xrdata[xdim_name].values[1] - xrdata[xdim_name].values[0]) / 2
+    res_sp = abs(xrdata[xdim_name].values[1] - xrdata[xdim_name].values[0]) / 1.5
 
     allpol = []
     for unique_value in np.unique(data_points[variable].values):
@@ -77,6 +75,7 @@ def xrarray_to_categorical_polygon(xrdata, variable: str,
         allpol.append(geo_subsetdf)
 
     return pd.concat(allpol)
+
 
 def add_2dlayer_toxarrayr(imageasarray, xarraydata: xarray.Dataset, variable_name: str) -> xarray.Dataset:
     """
@@ -832,16 +831,25 @@ def xy_fromtransform(transform, width, height):
 
 
 
-def masking_rescaling_xrdata(xrdata, feat_geom, buffer = None, scale_factor = None,resample_ref = None, return_original_size = True, nanvalue = 3.4028235e+38, method = 'nearest'):
+def masking_rescaling_xrdata(
+    xrdata: xarray.DataArray,
+    feature_geometry: gpd.GeoDataFrame,
+    buffer: Optional[float] = None,
+    scale_factor: Optional[float] = None,
+    resample_ref: Optional[xarray.DataArray] = None,
+    return_original_size: bool = True,
+    nanvalue: float = 3.4028235e+38,
+    method: str = 'nearest'
+) -> Optional[xarray.DataArray]:
     """
     This funct ion is implemented to mask and re scale xarray  using small geometries, less than xarray data's spatial resolution
     """
     feat_c = None
     if buffer:
-        feat_c = feat_geom.copy()
-        feat_geom = feat_geom.buffer(buffer)
+        feat_c = feature_geometry.copy()
+        feature_geometry = feature_geometry.buffer(buffer)
         
-    xrdata_m = mask_xarray_using_rio(xrdata.copy(), feat_geom.geometry)
+    xrdata_m = mask_xarray_using_rio(xrdata.copy(), feature_geometry.geometry)
     if xrdata_m is None: return None
     ## 
     
