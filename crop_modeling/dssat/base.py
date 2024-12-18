@@ -67,93 +67,6 @@ def create_dssat_tmp_env(source_path, tmp_path, exp_file):
     shutil.copy2(eco[0], tmp_path)
     shutil.copy2(spe[0], tmp_path)
     
-    
-    
-
-  
-def create_DSSBatch(ExpFilePath: str, selected_treatments: Optional[list[str]]=None, 
-                    command: str = 'DSCSM048.EXE Q DSSBatch.v48'):
-    """
-    Create DSSBatch file using DSSAT X file
-
-    :param         ExpFilePath: DSSAT X file complete path in str or Path
-    :param selected_treatments: Treatments selected from the X file in list
-    :param             command: DSSAT command to run dssat, defaults to 
-                                'DSCSM048.EXE Q DSSBatch.v48'
-    :return: None
-
-    """
-    ExpFilePath = Path(ExpFilePath)
-    ExpDir = ExpFilePath.parent
-    ExpFile = ExpFilePath.name
-    v = command.split('.EXE')[0][-2:]
-    DSSBatchFile = ExpDir / ('DSSBatch.v'+v)
-    
-    treatments_text = ''
-    TRTNO, SQ, OP, CO, TNAME = [], [], [], [], []
-    with open(ExpFilePath) as Fexp:
-        param = 0
-        for line in Fexp.readlines():
-            if line.startswith('@N R O C TNAME...'):
-                param = 1
-                continue
-            if param == 1 and line.startswith('\n'):
-                break
-            if param == 1:
-                treatments_text = line
-                if selected_treatments is not None and \
-                treatments_text[9:33].strip() in selected_treatments:
-                    TRTNO.append(treatments_text[:2])
-                    SQ.append(treatments_text[2:4])
-                    OP.append(treatments_text[4:6])
-                    CO.append(treatments_text[6:8])
-                    TNAME.append(treatments_text[9:33])
-                else:
-                    TRTNO.append(treatments_text[:2])
-                    SQ.append(treatments_text[2:4])
-                    OP.append(treatments_text[4:6])
-                    CO.append(treatments_text[6:8])
-                    TNAME.append(treatments_text[9:33])
-    treatment_df = pd.DataFrame({'TRTNO' : TRTNO, 'SQ' : SQ,
-                                 'OP': OP, 'CO': CO})
-    batch_text = '$BATCH(%s)' % ('Sequence'.upper()) + '\n' + '!' + '\n'
-    batch_text = batch_text + '@FILEX                                                                                        TRTNO     RP     SQ     OP     CO\n'
-    
-    for row in range(treatment_df.shape[0]):
-        batch_text = ''.join([batch_text, 
-                              ExpFile.ljust(94),
-                              treatment_df.loc[row, 'TRTNO'].rjust(5), 
-                              treatment_df.loc[row, 'OP'].rjust(7),
-                              treatment_df.loc[row, 'SQ'].rjust(7),
-                              treatment_df.loc[row, 'OP'].rjust(7),
-                              treatment_df.loc[row, 'CO'].rjust(7),
-                              '\n'])                                            # type: ignore
-    with open(DSSBatchFile, 'w') as Fbatch:
-        Fbatch.write(batch_text)
-    return None
-
-def run_batch_dssat(path, crop_code, bin_path):
-    #bin_path = 'C:/DSSAT48/DSCSM048.exe'
-    soil = glob.glob(path+'/*.SOL*')
-    if len(soil)==0:
-        print(f'soil file not found in :{path}')
-        #pathiprocess[os.path.basename(pathiprocess)] = False 
-        return {os.path.basename(path): False}
-    if not os.path.exists(os.path.join(path, 'TR.SOL')): 
-        os.rename(soil[0], os.path.join(path, 'TR.SOL'))
-    
-    exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
-    create_DSSBatch(exp_pathfile[0])
-
-    batch_pathfile = glob.glob(path+'/*.V48*')
-    subprocess.call([bin_path,'B' , os.path.basename(batch_pathfile[0])] ,
-                    shell= True, cwd=path,
-                    
-                    stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-    return {os.path.basename(path): os.path.exists(
-        os.path.join(path,'Summary.OUT'))}
-            
-
 def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_folder = False):
 
     exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
@@ -392,29 +305,31 @@ class DSSATBase(DSSATFiles):
         process_completed = {}
         if parallel_tr:
             for pathiprocess in self._process_paths:
-                    if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
-                            print(f'soil file not found in :{pathiprocess}')
-                            process_completed[os.path.basename(pathiprocess)] = False 
-                            continue
-                            
-                    file_path_pertr = {}
+                if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
+                        print(f'soil file not found in :{pathiprocess}')
+                        process_completed[os.path.basename(pathiprocess)] = False 
+                        continue
+                        
+                file_path_pertr = {}
 
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
-                            if bin_path is None:
-                                future_to_tr ={executor.submit(run_experiment_dssat_bin, pathiprocess, i, 
-                                                            crop_code,crop, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
-                            else:
-                                future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
-                                                            crop_code,bin_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
+                with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
+                        if bin_path is None:
+                            future_to_tr ={executor.submit(run_experiment_dssat_bin, pathiprocess, i, 
+                                                        crop_code,crop, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
+                        else:
+                            future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
+                                                        crop_code,bin_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
 
-                            for future in concurrent.futures.as_completed(future_to_tr):
-                                    tr = future_to_tr[future]
-                                    try:
-                                            file_path_pertr[str(tr)] = future.result()
-                                            
-                                    except Exception as exc:
-                                            print(f"Request for treatment {tr} generated an exception: {exc}")
-                    
+                        for future in concurrent.futures.as_completed(future_to_tr):
+                                tr = future_to_tr[future]
+                                try:
+                                        file_path_pertr[str(tr)] = future.result()
+                                        
+                                except Exception as exc:
+                                        print(f"Request for treatment {tr} generated an exception: {exc}")
+        
+                process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+            
         else:
             
             for pathiprocess in self._process_paths:
@@ -432,7 +347,7 @@ class DSSATBase(DSSATFiles):
                         file_path_pertr[str(tr)] =run_experiment_dssat(pathiprocess, tr, 
                                                             crop_code,bin_path, remove_folder = remove_tmp_folder)
             
-        process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+                process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
 
         return process_completed
                 

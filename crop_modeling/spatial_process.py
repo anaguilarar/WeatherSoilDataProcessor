@@ -352,7 +352,14 @@ class SpatialCM(DSSATBase):
     soil : xr.Dataset
         Soil dataset loaded from the configuration.
     """
-
+    @property
+    def crop(self):
+        return self.config.CROP.get('name', None)
+    
+    @property
+    def cultivar(self):
+        return self.config.CROP.get('cultivar', None)
+        
     @property
     def geo_features(self):
         if self._geodata is None:
@@ -394,9 +401,6 @@ class SpatialCM(DSSATBase):
         self.soil  # Load soil dataset
         self.climate  # Load climate dataset
         self._model = self.config.GENERAL_INFO.get('model', None)
-        self.crop = self.config.CROP.get('name', None)
-        self.cultivar = self.config.CROP.get('cultivar', None)
-        
         working_path = self.config.GENERAL_INFO.get('working_path', 'tmp')
         if not os.path.exists(working_path): os.mkdir(working_path)
         
