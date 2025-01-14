@@ -1,6 +1,7 @@
 affine==2.4.0
 cdsapi
-DSSATTools
+#DSSATTools
+rosetta-soil==0.1.1
 geopandas==1.0.1
 matplotlib==3.9.2
 numpy==2.0.2
@@ -14,7 +15,7 @@ Requests
 rioxarray
 scipy==1.13.1
 Shapely
-soilgrids
+soilgrids==0.1.4
 unidecode
 tqdm
 widgetsnbextension
