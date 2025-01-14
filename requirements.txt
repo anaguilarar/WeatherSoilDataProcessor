@@ -2,6 +2,7 @@ affine==2.4.0
 cdsapi
 #DSSATTools
 rosetta-soil==0.1.1
+fortranformat==1.2.2
 geopandas==1.0.1
 matplotlib==3.9.2
 numpy==2.0.2
