@@ -21,11 +21,12 @@ from multiprocessing import Pool
 import concurrent.futures
 import shutil
 import platform
+from ..utils.model_base import ModelBase
 
 def check_soil_id(management_pathfile, new_soil_id):
     
 
-    lines = DSSATBase.open_file(management_pathfile[0])
+    lines = DSSATFiles.open_file(management_pathfile[0])
     section_id = list(section_indices(lines, pattern= '*FIELDS'))[0]+1
     section_header_str = lines[section_id]
     header_indices = delimitate_header_indices(section_header_str)
@@ -141,52 +142,15 @@ def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder =
     return valtoreturn
 
 
-class DSSATBase(DSSATFiles):
+class DSSATBase(ModelBase):
     """
     A class for managing DSSAT-related file processing, configuration, and execution.
 
     Provides methods for setting up DSSAT experiments, converting data from other formats to DSSAT-compatible files, 
     and running simulations using R scripts.
     """
-    def __init__(self, path: str) -> None:
-        """
-        Initialize the DSSABase object.
-
-        Parameters
-        ----------
-        path : str
-            Path to the working directory.
-        """
-        self.path = path
-        self._tmp_path = ""
-        self._process_paths: List[str] = []
-        
-    def set_up(self, **kwargs) -> None:
-        """
-        Set up the working directory, temporary paths, and general information about the site and country.
-
-        Parameters
-        ----------
-        **kwargs : dict
-            Keyword arguments to configure site and country.
-
-            - site : str, optional
-                Site name to be used as a subdirectory for temporary files.
-            - country : str, optional
-                Country code or name for soil data.
-        """
-        self._process_paths = None
-        assert os.path.exists(self.path)
-        
-        self.site = kwargs.get('site', None)
-        if self.site is None:
-            self._tmp_path = os.path.join(self.path, 'tmp')
-        else:
-            self._tmp_path = os.path.join(self.path, self.site)
-            
-        if not os.path.exists(self._tmp_path): os.mkdir(self._tmp_path)
-        
-        self.country = kwargs.get('country', None)
+    def __init__(self, path):
+        super().__init__(path)
     
     def set_up_management(
         self,
@@ -225,7 +189,7 @@ class DSSATBase(DSSATFiles):
         index_soilwat : int, default=1
             Soil water index for the experiment.
         """
-        if self._process_paths is None: self.find_envworking_paths()
+        #if len(self._process_paths) == 0: self.find_envworking_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
 
         dssatm = DSSATManagement_base(path = template, crop = crop, variety = cultivar, 
@@ -327,7 +291,7 @@ class DSSATBase(DSSATFiles):
                                         
                                 except Exception as exc:
                                         print(f"Request for treatment {tr} generated an exception: {exc}")
-        
+                                        
                 process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
             
         else:
@@ -366,18 +330,7 @@ class DSSATBase(DSSATFiles):
             returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
             #if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
     
-    def find_envworking_paths(self):
-        folders = [i for i in os.listdir(self._tmp_path) if os.path.isdir(os.path.join(self._tmp_path,i))]
-        list_files = []
-        for folder in folders: 
-            pathsin = glob.glob(os.path.join(self._tmp_path, folder)+'/*.{}*'.format('WTH')) 
-            if pathsin: list_files.append(pathsin[0])
-
-        #list_files = glob.glob(self._tmp_path+'/*.{}*'.format('SOL'))
-        self._process_paths = [os.path.dirname(fn) for fn in list_files]
-        return self._process_paths
-    
-    def from_datacube_to_dssatfiles(
+    def from_datacube_to_files(
             self,
             xrdata,
             data_source: str = 'climate',
@@ -385,6 +338,9 @@ class DSSATBase(DSSATFiles):
             target_crs: str = 'EPSG:4326',
             group_by: Optional[str] = None,
             group_codes: Optional[dict] = None,
+            outputpath: str = None,
+            country = None,
+            site = None
         ) -> pd.DataFrame:
         """
         Converts data from a datacube to DSSAT-compatible files.
@@ -417,12 +373,12 @@ class DSSATBase(DSSATFiles):
         
         if data_source == 'climate':
             from_weather_to_dssat(dfdata, date_name = dim_name, group_by = group_by,
-                        outputpath=self._tmp_path, outputfn = 'WTHE0001', codes=group_codes)
+                        outputpath=outputpath, outputfn = 'WTHE0001', codes=group_codes)
         
         if data_source == 'soil':
             from_soil_to_dssat(dfdata, group_by=group_by, depth_name= dim_name,
-                                    outputpath=self._tmp_path, outputfn='SOL', codes=group_codes, 
-                                    country = self.country.upper(),site = self.site, soil_id='TRAN00001')
+                                    outputpath=outputpath, outputfn='SOL', codes=group_codes, 
+                                    country = country,site = site, soil_id='TRAN00001')
             
         return dfdata
 

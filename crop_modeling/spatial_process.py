@@ -5,10 +5,10 @@ import os
 
 from omegaconf import OmegaConf
 from tqdm import tqdm
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union, Tuple
 from pathlib import Path
 
-from .dssat.base import DSSATBase
+
 from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset
 from .utils.u_soil import get_layer_texture
 from spatialdata.climate_data import MLTWeatherDataCube
@@ -17,7 +17,8 @@ from spatialdata.files_manager import IntervalFolderManager, SoilFolderManager
 from spatialdata.gis_functions import masking_rescaling_xrdata, get_boundaries_from_path
 from spatialdata.soil_data import SoilDataCube
 from spatialdata.xr_dict import CustomXarray, from_dict_toxarray
-
+import glob
+from crop_modeling.utils.process import model_selection
 
 def get_weather_datacube(config):
     """
@@ -43,12 +44,15 @@ def get_weather_datacube(config):
                         'srad': config.WEATHER.setup_parameters.paths.srad,
                         'tmax': config.WEATHER.setup_parameters.paths.tmax,
                         'tmin': config.WEATHER.setup_parameters.paths.tmin}
-
+    if 'wn' in config.WEATHER.setup_parameters.paths.keys():
+        list_weather_paths.update({'wn':  config.WEATHER.setup_parameters.paths.wn})
+    if 'vp' in config.WEATHER.setup_parameters.paths.keys():
+        list_weather_paths.update({'vp':  config.WEATHER.setup_parameters.paths.vp})
 
     wdatacube = MLTWeatherDataCube(list_weather_paths, IntervalFolderManager(), extent=extent)
 
     wdatacube.common_dates_and_file_names(starting_date=config.WEATHER.setup_parameters.period[0], 
-                                                      ending_date=config.WEATHER.setup_parameters.period[1])
+                                        ending_date=config.WEATHER.setup_parameters.period[1])
     
     return wdatacube.multitemporal_data(reference_variable=config.WEATHER.setup_parameters.reference_variable, 
                                         ncores=ncores)
@@ -89,21 +93,48 @@ def reproject_xarray(xrdata, target_crs, src_crs = None):
 
 import xarray
 
-def get_roi_data(roi, weather_datacube, soil_datacube, aggregate_by = None, min_area = 15, scale_factor = 10):
-    """_summary_
+
+def get_roi_data(roi: gpd.GeoDataFrame,
+    weather_datacube: xarray.Dataset,
+    soil_datacube: Union[xarray.Dataset, dict],
+    dem_data: Optional[xarray.Dataset] = None,
+    aggregate_by: Optional[str] = None,
+    min_area: int = 15,
+    scale_factor: int = 10) -> Tuple[xarray.Dataset, xarray.Dataset, Optional[xarray.Dataset]]:
+    """
+    Extracts and processes climate, soil, and DEM data for a given region of interest (ROI).
 
     Parameters
     ----------
-    roi: geopandas.GeoDataFrame
-        region of interest with projected data
-    min_area : int
-        the minimun feature geometry area to apply buffer in km2
+    roi : geopandas.GeoDataFrame
+        Region of interest with projected geographic data.
+    weather_datacube : xarray.Dataset
+        Climate data as a multi-dimensional xarray dataset.
+    soil_datacube : Union[xarray.Dataset, dict]
+        Soil data as an xarray dataset or a dictionary of datasets.
+    dem_data : Optional[xarray.Dataset], optional
+        Digital elevation model data, by default None.
+    aggregate_by : Optional[str], optional
+        Aggregation criterion for soil data (e.g., "texture"), by default None.
+    min_area : int, optional
+        Minimum area (in km²) for ROI; if the area is smaller, buffering is applied, by default 15.
+    scale_factor : int, optional
+        Scale factor for downsampling or upsampling the data, by default 10.
 
     Returns
     -------
-    (xarray.Dataset, xarray.Dataset)
-        a tuple with the Multi-dimension climate and soil data for the given region of interest.
+    Tuple[xarray.Dataset, xarray.Dataset, Optional[xarray.Dataset]]
+        A tuple containing:
+        - Processed weather data as an xarray dataset.
+        - Processed soil data as an xarray dataset.
+        - Processed DEM data as an xarray dataset (if provided).
+
+    Raises
+    ------
+    ValueError
+        If `roi` has an invalid area or unsupported aggregation criterion.
     """
+    
     area = roi.area.values[0]/ (1000*1000)
     if area < min_area:
         narea = (min_area*1.2) - area
@@ -123,35 +154,44 @@ def get_roi_data(roi, weather_datacube, soil_datacube, aggregate_by = None, min_
             
     else:
         soil_datacube_m = masking_rescaling_xrdata(soil_datacube, roi, buffer=buffer, resample_ref =xr_reference, return_original_size=True, method = 'nearest')
+
+    soil_datacube_m.attrs['crs'] = get_crs_fromxarray(weather_datacube_m)
+    
+    dem_m = masking_rescaling_xrdata(dem_data, roi, buffer=buffer, resample_ref =xr_reference, return_original_size=True, method = 'nearest') if dem_data is not None else None
+    if dem_m is not None: dem_m.attrs['crs'] = get_crs_fromxarray(weather_datacube_m)
     
     if aggregate_by == 'texture':
         soilref = get_layer_texture(soil_datacube_m.isel(depth = 0))
         # merge texture to weather and soil
         weather_datacube_m = xarray.merge([weather_datacube_m,soilref])[weatherdatavars+ ['texture']]
-        soildatavars = list(soil_datacube_m.data_vars.keys())
-        soil_datacube_m = xarray.merge([soil_datacube_m,soilref['texture']])[soildatavars+ ['texture']]
+        soil_datacube_m = xarray.merge([soil_datacube_m,soilref['texture']])[list(soil_datacube_m.data_vars.keys())+ ['texture']]
+        if dem_m is not None:
+            dem_m = xarray.merge([dem_m,soilref['texture']])[list(dem_m.data_vars.keys())+ ['texture']]
 
-    soil_datacube_m.attrs['crs'] = get_crs_fromxarray(weather_datacube_m)
-
-    return weather_datacube_m, soil_datacube_m
+    return weather_datacube_m, soil_datacube_m, dem_m
 
 
 class WeatherTransformer():
     
-    def __init__(self, var_names = {'rain':'precipitation','tmax':'tmax', 'tmin': 'tmin', 'srad': 'srad'}) -> None:
+    def __init__(self, var_names = {'rain':'precipitation','tmax':'tmax', 'tmin': 'tmin', 'srad': 'srad', 'vp':'vp', 'wn': 'wn'}) -> None:
         
         self.rain = var_names.get('rain', None)
         self.tmin = var_names.get('tmin', None)
         self.tmax = var_names.get('tmax', None)
         self.srad = var_names.get('srad', None)
+        self.vp = var_names.get('vp', None)
+        self.wn = var_names.get('wn', None)
+    
     
     def __call__(self,xrdata) -> Any:
-        if self.tmax in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmax].values)>273.15:
+        if self.tmax in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmax].values)>273.15: # from K to C
             xrdata[self.tmax] -= 273.15
-        if self.tmin in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmin].values)>273.15:
+        if self.tmin in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmin].values)>273.15: # from K to C
             xrdata[self.tmin] -= 273.15
-        if self.srad in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.srad].values)>1000000:
+        if self.srad in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.srad].values)>1000000: # from J m-2 day-1 to MJ m-2 day-1
             xrdata[self.srad] /= 1000000
+        if self.vp in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.vp].values)>10: # from hPa to kPa
+            xrdata[self.vp] *= 0.1
 
         return xrdata
 
@@ -328,9 +368,11 @@ class SpatialData():
         else:
             self.soil = soil_datac.rio.write_crs(get_crs_fromxarray(soil_datac)).rio.reproject(self._projected_crs)
             self.soil.attrs['crs'] = self._projected_crs
-    
+   
 
-class SpatialCM(DSSATBase):
+class SpatialCM():
+    
+        
     """
     A class for managing and processing spatial data for crop modeling systems like DSSAT.
 
@@ -352,6 +394,17 @@ class SpatialCM(DSSATBase):
     soil : xr.Dataset
         Soil dataset loaded from the configuration.
     """
+    
+    def _read_geosp_data(self, attr):
+        path = self.config.SPATIAL_INFO.get(attr,None)
+        if path is None:
+            return None
+        elif not os.path.exists(path):
+            raise FileNotFoundError(f"{attr} data path not found: {path}")
+        else:
+            return SpatialData()._open_dataset(path)
+
+        
     @property
     def crop(self):
         return self.config.CROP.get('name', None)
@@ -377,22 +430,25 @@ class SpatialCM(DSSATBase):
         Lazy-loaded property for climate data.
         """
         if self._climate is None:
-            weather_path = self.config.SPATIAL_INFO.weather_path
-            if not os.path.exists(weather_path):
-                raise FileNotFoundError(f"Climate data path not found: {weather_path}")
-            self._climate = SpatialData()._open_dataset(weather_path)
+            self._climate = self._read_geosp_data('weather_path')
             
         return self._climate        
         
     @property
     def soil(self):
+        """
+        Lazy-loaded property for soil data.
+        """
         if self._soil is None:
-            soil_path = self.config.SPATIAL_INFO.soil_path
-            if not os.path.exists(soil_path):
-                raise FileNotFoundError(f"Soil data path not found: {soil_path}")
-            self._soil = SpatialData()._open_dataset(soil_path)
+            self._soil = self._read_geosp_data('soil_path')
+        return self._soil
+    
+    @property
+    def dem(self):
+        if self._dem is None:
+            self._dem = self._read_geosp_data('dem_path')
             
-        return self._soil        
+        return self._dem  
     
     def _setup(self):
         """
@@ -400,12 +456,13 @@ class SpatialCM(DSSATBase):
         """
         self.soil  # Load soil dataset
         self.climate  # Load climate dataset
-        self._model = self.config.GENERAL_INFO.get('model', None)
+        self.dem
+        
+        model = self.config.GENERAL_INFO.get('model', None)
         working_path = self.config.GENERAL_INFO.get('working_path', 'tmp')
         if not os.path.exists(working_path): os.mkdir(working_path)
+        self.model = model_selection(model, working_path)
         
-        if self._model == 'dssat': ## TODO IMPLEMETN OTHER CROP MODELING SYSTEMS
-            super().__init__(working_path)
         
     def __init__(self, 
         configuration_path: Optional[str] = None,
@@ -415,6 +472,7 @@ class SpatialCM(DSSATBase):
         self._geodata = None
         self._climate = None
         self._soil = None
+        self._dem = None
         
         if configuration_path:
             self.config = OmegaConf.load(configuration_path)
@@ -459,34 +517,70 @@ class SpatialCM(DSSATBase):
         roi = roi.to_crs(self.climate.rio.crs)
         roi_name = roi[self.config.SPATIAL_INFO.feature_name].values[0]
         # extract individual data
-        weatherm, soilm = get_roi_data(roi, self.climate, self.soil, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor)
+        weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor)
         ## check both have data
         datainweather = all(not all(np.isnan(np.unique(weatherm.isel(date = 0)[var].values))) for var in list(weatherm.data_vars.keys()))
         datainsoil = all(not all(np.isnan(np.unique(soilm.isel(depth = 0)[var].values))) for var in list(soilm.data_vars.keys()))
     
         if not (datainweather and datainsoil): return None
         weatherm = WeatherTransformer()(weatherm)
-        # create folders 
-        self.set_up(country = self.config.GENERAL_INFO.country, site = roi_name)
         
+        # create folders      
+        self.set_up_folders(site = roi_name)
+        self.country = self.config.GENERAL_INFO.get('country', None)
+        # export spatial group layer
         if group_by and create_group_splayer:
             self.group_spatial_layer(soilm)
             
-        # export data as dssat files
-        for data, datatype in zip([weatherm, soilm],['climate', 'soil']):
-            self.from_datacube_to_dssatfiles(data, data_source=datatype, 
-                                                target_crs = crs, group_by = group_by, group_codes = group_codes)
-        
+        if self.model.name == 'dssat':
+            # export data as dssat files
+            for data, datatype in zip([weatherm, soilm],['climate', 'soil']):
+                self.model.from_datacube_to_files(data, data_source=datatype, 
+                                                    target_crs = crs, group_by = group_by, group_codes = group_codes,
+                                                    outputpath= self._tmp_path,
+                                                    country = self.country.upper(),
+                                                    site = roi_name)
+        if self.model.name == 'caf':
+            
+            for data, datatype in zip([weatherm, soilm, demm],['climate', 'soil', 'dem']):
+                if data is not None:
+                    self.model.from_datacube_to_files(data, data_source= datatype, target_crs=crs, group_by = group_by, group_codes = group_codes,
+                                                outputpath= self._tmp_path)
+                
+                    
         return self._tmp_path
     
+    def set_up_folders(self, site = None) -> None:
+        """
+        Set up the working directory, temporary paths, and general information about the site and country.
+
+        Parameters
+        ----------
+        **kwargs : dict
+            Keyword arguments to configure site and country.
+
+            - site : str, optional
+                Site name to be used as a subdirectory for temporary files.
+        """
+        assert os.path.exists(self.model.path)
+        
+        self.site = site
+        if self.site is None:
+            self._tmp_path = os.path.join(self.model.path, 'tmp')
+        else:
+            self._tmp_path = os.path.join(self.model.path, self.site)
+            
+        if not os.path.exists(self._tmp_path): os.mkdir(self._tmp_path)
+        
+        
     def group_spatial_layer(self, soildata):
         group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         grouplayer = soildata.isel(depth = 0)[group_by]
         grouplayer = grouplayer.drop_vars('depth')
         try:
-
             grouplayer = grouplayer.rio.reproject('EPSG:4326')
             grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{group_by}.tif'))
+            
         except:
             
             grouplayer = reproject_xrdata(grouplayer, 'EPSG:4326')
