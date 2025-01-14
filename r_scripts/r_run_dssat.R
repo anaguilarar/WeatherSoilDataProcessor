@@ -31,7 +31,6 @@ rundssat <-function(i,path.to.extdata,TRT,crop_code, bin_dssatpath = NULL, exp_f
   gc()
 }
 
-path_to_config = 'D:/OneDrive - CGIAR/projects/suelos_honduras/dssat_runs_hnd/puertocastilla_020108/clayloam/experimental_file_config.yaml'
 
 args <- commandArgs(trailingOnly = TRUE)
 
