@@ -274,7 +274,7 @@ class PyCAF(ModelBase):
         if tree_density is not None: tree_parameters['TREEDENS0'] = tree_density
         id_tree = 1
         parameters_to_modify = {'{}({})'.format(k, id_tree):v for k,v in tree_parameters.items()}
-        self.change_parameters(paremetersto_modify=parameters_to_modify)
+        self.change_parameters(parameters_to_modify=parameters_to_modify)
     
     def read_weather(self, weather_path: str, init_year: Optional[int] = None, init_doy: Optional[int] = None) -> np.ndarray:
         """
@@ -338,12 +338,12 @@ class PyCAF(ModelBase):
         """
         management = CAFManagement()
         
-        coffe_prun = management.coffe_prunning_schedule(**management_config.coffee_prunning)
+        coffee_prun = management.coffe_prunning_schedule(**management_config.coffee_prunning)
         tree_prun = management.tree_prunning_schedule(**management_config.tree_prunning)
         tree_thinning = management.tree_thinning_schedule(**management_config.tree_thinning)
         fert = management.fertilization_schedule(**management_config.fertilization)
         
-        return fert, coffe_prun, tree_prun, tree_thinning
+        return fert, coffee_prun, tree_prun, tree_thinning
     
     def organize_env(self, **kwargs) -> None:
         """

@@ -8,7 +8,6 @@ from typing import Optional, Dict
 
 from ..utils.process import summarize_datacube_as_df
 
-
 # Define the abstract base class
 class CAFSP_transformer(ABC):
     """

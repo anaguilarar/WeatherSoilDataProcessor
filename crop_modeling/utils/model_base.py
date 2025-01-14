@@ -2,6 +2,7 @@ import os
 
 from abc import ABC, abstractmethod
 from typing import List
+import pandas as pd
 import glob
 
 class ModelBase:
@@ -40,8 +41,101 @@ class ModelBase:
             pathsin = glob.glob(os.path.join(path, folder)+'/*.{}*'.format(file_ext)) 
             if pathsin: list_files.append(pathsin[0])
 
-        #list_files = glob.glob(self._tmp_path+'/*.{}*'.format('SOL'))
         self._process_paths = [os.path.dirname(fn) for fn in list_files]
         return self._process_paths
     
+class BaseOutputData(ABC):
+    """
+    Abstract base class for handling the models outputs
+    """
+
+    def __init__(self, path: str) -> None:
+        """
+        Initialize the object with a path.
+
+        Parameters
+        ----------
+        path : str
+            Path to the directory containing model files.
+        """
+        self.data = {}
+        self.path = path
+        print(path)
+
+    @property
+    @abstractmethod
+    def extent_files(self) -> dict:
+        """
+        Define the file extensions or patterns for different data types.
+
+        Returns
+        -------
+        dict
+            Mapping of data type to file extensions or patterns.
+        """
+        pass
+
+    def get_files(self, data_type: str):
+        """
+        Retrieve files of the specified type.
+
+        Parameters
+        ----------
+        data_type : str
+            The type of data to fetch files for ("climate", "soil", "output").
+
+        Returns
+        -------
+        list
+            List of file paths matching the specified type.
+        """
+        print(self.extent_files[data_type])
+        fns = glob.glob(self.path + f"/*{self.extent_files[data_type]}*")
+        assert len(fns) > 0, f"No files were found for {data_type}"
+        return fns
     
+    @abstractmethod
+    def output_data(self, year: int = None) -> pd.DataFrame:
+        """
+        Extract and process output data.
+
+        Parameters
+        ----------
+        year : int, optional
+            Filter data for a specific year.
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed output data.
+        """
+        pass
+
+    @abstractmethod
+    def weather_data(self, year: int = None) -> pd.DataFrame:
+        """
+        Extract and process weather data.
+
+        Parameters
+        ----------
+        year : int, optional
+            Filter data for a specific year.
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed weather data.
+        """
+        pass
+
+    @abstractmethod
+    def soil_data(self) -> pd.DataFrame:
+        """
+        Extract and process soil data.
+
+        Returns
+        -------
+        pd.DataFrame
+            Processed soil data.
+        """
+        pass

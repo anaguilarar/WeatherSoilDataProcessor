@@ -1,11 +1,12 @@
+from ._base import DSSATFiles, is_float_regex
 from .files_reading import delimitate_header_indices, getting_line_inoutputfile
-import pandas as pd
-from ._base import DSSATFiles, is_float_regex, coords_from_soil_file
-from datetime import datetime
+from ..utils.model_base import BaseOutputData
+
 import os
-import glob
 import numpy as np
-from DSSATTools.crop import Crop
+import pandas as pd
+
+from datetime import datetime
 
 class DSSATOutput(DSSATFiles):
 
@@ -40,18 +41,12 @@ class DSSATOutput(DSSATFiles):
         datenames = [cname for cname in self.df.columns if cname.endswith('DAT')]
         self.df[datenames] = self.df[datenames].map(lambda x: datetime.strptime(x, format) if x != '-99' else np.nan )
         return self.df
-    
 
-
-class DSSATOutputData:
+   
+class DSSATOutputData(BaseOutputData):
     @property
     def extent_files(self):
-        return {"climate": "WTH", "soil": "SOL", "output": "OUT"}
-
-    def get_files(self, type):
-        fns = glob.glob(self.path + f"/*.{self.extent_files[type]}*")
-        assert len(fns) > 0, f"No files were found {type}"
-        return fns
+        return {"climate": ".WTH", "soil": ".SOL", "output": ".OUT"}
 
     def output_data(self, year: int = None):
         fn_path = self.get_files("output")
@@ -94,8 +89,4 @@ class DSSATOutputData:
         self.data["soil"] = df
         return df
 
-    def __init__(self, path) -> None:
-        self.data = {}
-        self.path = path
-        print(path)
         

@@ -8,76 +8,15 @@ from tqdm import tqdm
 from typing import Any, Dict, Optional, Union, Tuple
 from pathlib import Path
 
-
 from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset
-from .utils.u_soil import get_layer_texture
-from spatialdata.climate_data import MLTWeatherDataCube
+from .utils.u_soil import get_layer_texture, get_soil_datacube
+from .utils.u_weather import get_weather_datacube, WeatherTransformer
+
 from spatialdata.datacube import create_dimension, reproject_xrdata
-from spatialdata.files_manager import IntervalFolderManager, SoilFolderManager
-from spatialdata.gis_functions import masking_rescaling_xrdata, get_boundaries_from_path
-from spatialdata.soil_data import SoilDataCube
+from spatialdata.gis_functions import masking_rescaling_xrdata
 from spatialdata.xr_dict import CustomXarray, from_dict_toxarray
-import glob
+
 from crop_modeling.utils.process import model_selection
-
-def get_weather_datacube(config):
-    """
-    Generates a multi-temporal weather data cube.
-
-    Parameters
-    ----------
-    config : omegaconf.DictConfig
-        The configuration object containing file paths, dates, and other parameters.
-
-    Returns
-    -------
-    xarray.Dataset
-        Multi-temporal weather data cube with the requested variables.
-    """
-    ncores= config.GENERAL_INFO.get('ncores', 0)
-    
-    boundaries = config.SPATIAL_VECTOR.get('boundaries', None)
-    extent = get_boundaries_from_path(boundaries, round_numbers = True, crs = config.WEATHER.setup_parameters.crs) if boundaries else None
-
-    # Specify paths for weather data, such as precipitation and solar radiation
-    list_weather_paths = {'precipitation': config.WEATHER.setup_parameters.paths.precipitation,
-                        'srad': config.WEATHER.setup_parameters.paths.srad,
-                        'tmax': config.WEATHER.setup_parameters.paths.tmax,
-                        'tmin': config.WEATHER.setup_parameters.paths.tmin}
-    if 'wn' in config.WEATHER.setup_parameters.paths.keys():
-        list_weather_paths.update({'wn':  config.WEATHER.setup_parameters.paths.wn})
-    if 'vp' in config.WEATHER.setup_parameters.paths.keys():
-        list_weather_paths.update({'vp':  config.WEATHER.setup_parameters.paths.vp})
-
-    wdatacube = MLTWeatherDataCube(list_weather_paths, IntervalFolderManager(), extent=extent)
-
-    wdatacube.common_dates_and_file_names(starting_date=config.WEATHER.setup_parameters.period[0], 
-                                        ending_date=config.WEATHER.setup_parameters.period[1])
-    
-    return wdatacube.multitemporal_data(reference_variable=config.WEATHER.setup_parameters.reference_variable, 
-                                        ncores=ncores)
-
-
-def get_soil_datacube(config):
-    """
-    Generates a multi-depth soil data cube.
-
-    Parameters
-    ----------
-    config : omegaconf.DictConfig
-        The configuration object containing soil data paths and CRS reference.
-
-    Returns
-    -------
-    xarray.Dataset
-        Multi-depth soil data cube for the given extent and variables.
-    """
-    boundaries = config.SPATIAL_VECTOR.get('boundaries', None)
-    extent = get_boundaries_from_path(boundaries, round_numbers = True, crs = config.SOIL.setup_parameters.crs) if boundaries else None
-
-    folder_manager = SoilFolderManager(config.SOIL.setup_parameters.path, config.SOIL.setup_parameters.variables)
-    soilcube = SoilDataCube(folder_manager, extent=extent)
-    return soilcube.multi_depth_data(verbose=False, reference_variable=config.SOIL.setup_parameters.reference_variable)
 
 
 def reproject_xarray(xrdata, target_crs, src_crs = None):
@@ -169,31 +108,6 @@ def get_roi_data(roi: gpd.GeoDataFrame,
             dem_m = xarray.merge([dem_m,soilref['texture']])[list(dem_m.data_vars.keys())+ ['texture']]
 
     return weather_datacube_m, soil_datacube_m, dem_m
-
-
-class WeatherTransformer():
-    
-    def __init__(self, var_names = {'rain':'precipitation','tmax':'tmax', 'tmin': 'tmin', 'srad': 'srad', 'vp':'vp', 'wn': 'wn'}) -> None:
-        
-        self.rain = var_names.get('rain', None)
-        self.tmin = var_names.get('tmin', None)
-        self.tmax = var_names.get('tmax', None)
-        self.srad = var_names.get('srad', None)
-        self.vp = var_names.get('vp', None)
-        self.wn = var_names.get('wn', None)
-    
-    
-    def __call__(self,xrdata) -> Any:
-        if self.tmax in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmax].values)>273.15: # from K to C
-            xrdata[self.tmax] -= 273.15
-        if self.tmin in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.tmin].values)>273.15: # from K to C
-            xrdata[self.tmin] -= 273.15
-        if self.srad in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.srad].values)>1000000: # from J m-2 day-1 to MJ m-2 day-1
-            xrdata[self.srad] /= 1000000
-        if self.vp in list(xrdata.data_vars.keys()) and np.nanmax(xrdata[self.vp].values)>10: # from hPa to kPa
-            xrdata[self.vp] *= 0.1
-
-        return xrdata
 
 class SpatialData():
     """
@@ -368,7 +282,6 @@ class SpatialData():
         else:
             self.soil = soil_datac.rio.write_crs(get_crs_fromxarray(soil_datac)).rio.reproject(self._projected_crs)
             self.soil.attrs['crs'] = self._projected_crs
-   
 
 class SpatialCM():
     
@@ -395,6 +308,25 @@ class SpatialCM():
         Soil dataset loaded from the configuration.
     """
     
+    def __init__(self, 
+        configuration_path: Optional[str] = None,
+        configuration_dict: Optional[dict] = None,
+        ) -> None:
+        self.config = None
+        self._geodata = None
+        self._climate = None
+        self._soil = None
+        self._dem = None
+        
+        if configuration_path:
+            self.config = OmegaConf.load(configuration_path)
+        elif configuration_dict:
+            self.config = OmegaConf.create(configuration_dict)
+        else:
+            raise ValueError("Either `configuration_path` or `configuration_dict` must be provided.")
+
+        self._setup()
+    
     def _read_geosp_data(self, attr):
         path = self.config.SPATIAL_INFO.get(attr,None)
         if path is None:
@@ -404,7 +336,6 @@ class SpatialCM():
         else:
             return SpatialData()._open_dataset(path)
 
-        
     @property
     def crop(self):
         return self.config.CROP.get('name', None)
@@ -463,25 +394,6 @@ class SpatialCM():
         if not os.path.exists(working_path): os.mkdir(working_path)
         self.model = model_selection(model, working_path)
         
-        
-    def __init__(self, 
-        configuration_path: Optional[str] = None,
-        configuration_dict: Optional[dict] = None,
-        ) -> None:
-        self.config = None
-        self._geodata = None
-        self._climate = None
-        self._soil = None
-        self._dem = None
-        
-        if configuration_path:
-            self.config = OmegaConf.load(configuration_path)
-        elif configuration_dict:
-            self.config = OmegaConf.create(configuration_dict)
-        else:
-            raise ValueError("Either `configuration_path` or `configuration_dict` must be provided.")
-
-        self._setup()
         
     def create_roi_sp_data(self, roi_index: Optional[int] = None,
         roi: Optional[gpd.GeoDataFrame] = None,
@@ -571,7 +483,6 @@ class SpatialCM():
             self._tmp_path = os.path.join(self.model.path, self.site)
             
         if not os.path.exists(self._tmp_path): os.mkdir(self._tmp_path)
-        
         
     def group_spatial_layer(self, soildata):
         group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)

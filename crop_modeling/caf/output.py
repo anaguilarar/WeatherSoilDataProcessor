@@ -2,18 +2,15 @@ import glob
 import os
 import pandas as pd
 from datetime import datetime
+from ..utils.model_base import BaseOutputData
 
-class CAFOutputData:
+class CAFOutputData(BaseOutputData):
+    
     @property
     def extent_files(self):
         return {"climate": "cafweather", "soil": "cafsoil", "output": "output.csv"}
 
-    def get_files(self, type):
-        fns = glob.glob(self.path + f"/{self.extent_files[type]}*")
-        assert len(fns) > 0, f"No files were found {type}"
-        return fns
-
-    def output_data(self, year: int = None):
+    def output_data(self, year: int = None) -> pd.DataFrame:
         fn_path = self.get_files("output")
         fn_path = list(
             set(
@@ -38,7 +35,7 @@ class CAFOutputData:
         self.data["output"] = df
         return df
 
-    def weather_data(self, year=None):
+    def weather_data(self, year: int = None) -> pd.DataFrame:
 
         fn_path = self.get_files("climate")
         
@@ -55,14 +52,9 @@ class CAFOutputData:
         self.data["climate"] = df
         return df
 
-    def soil_data(self):
+    def soil_data(self) -> pd.DataFrame:
         fn_path = self.get_files("soil")
         df = pd.read_csv(fn_path[0])
         self.data["soil"] = df
         return df
-
-    def __init__(self, path) -> None:
-        self.data = {}
-        self.path = path
-        print(path)
         

@@ -1,5 +1,8 @@
 from spatialdata.gis_functions import add_2dlayer_toxarrayr
 from spatialdata.soil_data import find_soil_textural_class_in_nparray
+from spatialdata.gis_functions import get_boundaries_from_path
+from spatialdata.files_manager import SoilFolderManager
+from spatialdata.soil_data import SoilDataCube
 
 import numpy as np
 from rosetta import SoilData, rosetta
@@ -150,6 +153,30 @@ def find_soil_textural_class(sand,clay):
         textural_class = 'unknown' # in case we failed to catch any errors earlier
 
     return textural_class
+
+
+
+def get_soil_datacube(config):
+    """
+    Generates a multi-depth soil data cube.
+
+    Parameters
+    ----------
+    config : omegaconf.DictConfig
+        The configuration object containing soil data paths and CRS reference.
+
+    Returns
+    -------
+    xarray.Dataset
+        Multi-depth soil data cube for the given extent and variables.
+    """
+    boundaries = config.SPATIAL_VECTOR.get('boundaries', None)
+    extent = get_boundaries_from_path(boundaries, round_numbers = True, crs = config.SOIL.setup_parameters.crs) if boundaries else None
+
+    folder_manager = SoilFolderManager(config.SOIL.setup_parameters.path, config.SOIL.setup_parameters.variables)
+    soilcube = SoilDataCube(folder_manager, extent=extent)
+    return soilcube.multi_depth_data(verbose=False, reference_variable=config.SOIL.setup_parameters.reference_variable)
+
 
 
 def slu1(clay:float, sand:float) -> float:
