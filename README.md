@@ -1,13 +1,15 @@
 # Spatial Crop Simulation:
 
-**WeatherSoilDataProcessor** is a Python-based tool designed for downloading, processing, and transforming weather and soil data for site-specific crop modeling. The repository enables users to create multi-temporal data cubes for weather variables such as precipitation, temperature, and solar radiation, as well as download and process soil data. With built-in support for interactive visualizations and data export 
+**WeatherSoilDataProcessor** is a Python-based tool designed for downloading, processing, and transforming weather and soil data for site-specific crop modeling. The repository enables users to create multi-temporal data cubes for weather variables such as precipitation, temperature, and solar radiation, as well as download and process soil data. With built-in support for interactive visualizations and data export. 
 capabilities, this tool is ideal for scientific and agricultural research applications.
 
 ## Features
 * **Weather Data Downloads**: Automatically fetch historical weather data from CHIRPS and AgEra5.
 * **Soil Data Downloads**: Automatically fetch and download soil data from SoilGrids.
 * **DSSAT Format Conversion**: Convert processed weather and soil data into DSSAT-compatible format for easy integration into DSSAT crop modeling software.
-* **Simulate potential yield using processed-based crop models**: Simulate potential crop yield using processed-based crop models and spatial data.
+* **Simulate potential yield using process-based crop models (PBCs)**: Simulate potential crop yield using process-based crop models and spatial data. Currently, two PBCs are available: 
+  * [DSSAT](https://dssat.net/): A widely-used crop simulation model for various crops and farming systems.
+  * [CAF2021](https://link.springer.com/article/10.1007/s10457-022-00755-6): An agroforestry model specifically designed to simulate coffee growth and its interaction with shade trees.
 
 ## Installation
 
@@ -134,3 +136,8 @@ Example 2 [(transform_datacube_to_dssat_files)](https://github.com/anaguilarar/W
 Example 3 [(dssat_spatial_crop_simulation)](https://github.com/anaguilarar/WeatherSoilDataProcessor/blob/main/google_colab_examples/dssat_spatial_crop_simulation.ipynb):
 - Simulate crop yield potential using spatial data.
 - Export results for further analysis.
+
+
+## References
+
+Van Oijen, M., Haggar, J., Barrios, M., Büchi, L., Cerda, R., Cerretelli, S., López, E., De Melo, E., Filho, V., & Ospina, A. (2022). Ecosystem services from coffee agroforestry in Central America: estimation using the CAF2021 model. 1, 3. https://doi.org/10.1007/s10457-022-00755-6
