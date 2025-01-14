@@ -742,11 +742,16 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
     xrresampled.attrs['transform'] = get_transform_fromxy(xrref[xrefdim_name].values,
                                                           xrref[yrefdim_name].values)#transform_fromxy(xrref[xrefdim_name].values,xrref[yrefdim_name].values, xrref.attrs['transform'][0])[0]
     #xrresampled.attrs['transform'] = xrref.rio.transform()
+    for i in range(len(list(xrresampled.keys()))):
+        shaperast = xrresampled[list(xrresampled.keys())[i]].shape
+        if len(shaperast) > 1:
+            if len(shaperast) == 3:
+                xrresampled.attrs['height'], xrresampled.attrs['width'] = shaperast[1:]
+            else:
+                xrresampled.attrs['height'], xrresampled.attrs['width'] = shaperast[:2]
+            xrresampled.attrs['dtype'] = xrresampled[list(xrresampled.keys())[i]].data.dtype
+            break
 
-    xrresampled.attrs['height'] = xrresampled[list(xrresampled.keys())[0]].shape[0]
-    xrresampled.attrs['width'] = xrresampled[list(xrresampled.keys())[0]].shape[1]
-    xrresampled.attrs['dtype'] = xrresampled[list(xrresampled.keys())[0]].data.dtype
-    
     return xrresampled
 
 def transform_fromxy(x: np.ndarray, 
