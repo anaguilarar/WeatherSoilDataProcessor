@@ -176,7 +176,8 @@ class SpatialData():
             The loaded dataset.
         """
         if filepath.endswith('.nc'):
-            data = xarray.open_dataset(filepath, engine = engine)
+            with xarray.open_dataset(filepath, engine = engine) as ds:
+                data = ds.copy()
         elif filepath.endswith('.pickle'):
             with open(filepath, 'rb') as fn:
                 data = pickle.load(fn)
@@ -197,14 +198,16 @@ class SpatialData():
         fn : str
             Output file name.
         """
+        dcengine = 'netcdf4' if self._dcengine is None else self._dcengine
         encoding = set_encoding(xrdata)
         xrdata = check_crs_inxrdataset(xrdata)
-        xrdata.to_netcdf(fn, encoding = encoding, engine = self._dcengine )
+        xrdata.to_netcdf(fn, encoding = encoding, engine = dcengine)
         
     def _setup(self):
         self.climate = None
         self.soil = None
         self.ndvi = None
+        self._dcengine= None
         self._projected_crs = 'ESRI:54052'
         self._geo_crs = 'EPSG:4326'
         self.weather_transformer = WeatherTransformer()
@@ -399,7 +402,8 @@ class SpatialCM():
         roi: Optional[gpd.GeoDataFrame] = None,
         crs: str = "EPSG:4326",
         group_codes: Optional[dict] = None,
-        create_group_splayer = False
+        create_group_splayer = False,
+        export_spatial_data = False
     ) -> Optional[Path]:
         """
         Extracts and processes data for a region of interest (ROI).
@@ -420,6 +424,7 @@ class SpatialCM():
         Optional[Path]
             Path to the temporary directory containing DSSAT files, or None if no data is found.
         """
+        
         group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         if roi_index:
             roi = self.geo_features.iloc[roi_index:roi_index+1]
@@ -428,18 +433,33 @@ class SpatialCM():
         
         roi = roi.to_crs(self.climate.rio.crs)
         roi_name = roi[self.config.SPATIAL_INFO.feature_name].values[0]
-        # extract individual data
-        weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor)
+        self.set_up_folders(site = roi_name)
+        weather_tmppath = os.path.join(self._tmp_path, 'weather_.nc')
+        soil_tmptpath = os.path.join(self._tmp_path, 'soil_.nc')
+        dem_tmptpath = os.path.join(self._tmp_path, 'dem_.nc')
+        
+        self.country = self.config.GENERAL_INFO.get('country', None)
+        if os.path.exists(soil_tmptpath) and os.path.exists(weather_tmppath):
+            soilm = SpatialData()._open_dataset(soil_tmptpath)
+            weatherm = SpatialData()._open_dataset(weather_tmppath)
+            demm = SpatialData()._open_dataset(dem_tmptpath) if os.path.exists(dem_tmptpath) else None
+        else:
+            # extract individual data
+            weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor)
         ## check both have data
         datainweather = all(not all(np.isnan(np.unique(weatherm.isel(date = 0)[var].values))) for var in list(weatherm.data_vars.keys()))
         datainsoil = all(not all(np.isnan(np.unique(soilm.isel(depth = 0)[var].values))) for var in list(soilm.data_vars.keys()))
     
         if not (datainweather and datainsoil): return None
         weatherm = WeatherTransformer()(weatherm)
-        
         # create folders      
-        self.set_up_folders(site = roi_name)
-        self.country = self.config.GENERAL_INFO.get('country', None)
+        
+        
+        # export spatial data
+        if export_spatial_data and not (os.path.exists(soil_tmptpath) and os.path.exists(weather_tmppath)):
+            for data, name in zip([weatherm, soilm, demm],['weather','soil','dem']):
+                data.attrs['dtype'] = 'float'
+                SpatialData()._save_asnc(data, fn = os.path.join(self._tmp_path, f'{name}_.nc'))
         # export spatial group layer
         if group_by and create_group_splayer:
             self.group_spatial_layer(soilm)
@@ -459,7 +479,9 @@ class SpatialCM():
                     self.model.from_datacube_to_files(data, data_source= datatype, target_crs=crs, group_by = group_by, group_codes = group_codes,
                                                 outputpath= self._tmp_path)
                 
-                    
+        del soilm
+        del weatherm
+        del demm
         return self._tmp_path
     
     def set_up_folders(self, site = None) -> None:

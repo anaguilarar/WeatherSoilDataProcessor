@@ -2,6 +2,7 @@
 import os
 from DSSATTools.base.sections import Section, clean_comments
 from DSSATTools.crop import CROPS_MODULES, VERSION, Crop
+from DSSATTools.run import CONFILE
 import os
 
 from typing import List
@@ -22,6 +23,7 @@ import concurrent.futures
 import shutil
 import platform
 from ..utils.model_base import ModelBase
+
 
 def check_soil_id(management_pathfile, new_soil_id):
     
@@ -68,7 +70,7 @@ def create_dssat_tmp_env(source_path, tmp_path, exp_file):
     shutil.copy2(eco[0], tmp_path)
     shutil.copy2(spe[0], tmp_path)
     
-def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_folder = False):
+def run_experiment_dssat(path, experimentid,crop_code, crop,bin_path = None, dssat_path = None, remove_folder = False):
 
     exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
     if len(exp_pathfile)==0:
@@ -80,13 +82,28 @@ def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_f
         
     exp_pathfile = os.path.basename(exp_pathfile[0])
     #create_DSSBatch(exp_pathfile[0])
-    
+    dssatpath = os.path.dirname(bin_path) if dssat_path is None else dssat_path
     tmppath = os.path.join(path, f'_{experimentid}')
     create_dssat_tmp_env(path, tmppath, exp_pathfile)
+    
+    wth_path = os.path.join(tmppath,'WTHE0001')
+    std_path = os.path.join(dssat_path, 'StandardData')
+    crd_path = os.path.join(dssat_path, 'Genotype')
+    soil_path = os.path.join(dssat_path, 'Soil')
 
-    subprocess.call([bin_path, 'C', exp_pathfile, str(experimentid)],
-                    stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    shell= True, cwd=tmppath)
+    with open(os.path.join(tmppath, CONFILE), 'w') as f:
+        f.write(f'WED    {wth_path}\n')
+        f.write(f'M{crop_code}    {tmppath} dscsm048 {CROPS_MODULES[crop]}{VERSION}\n')
+        f.write(f'CRD    {crd_path}\n')
+        f.write(f'PSD    {os.path.join(dssatpath, "Pest")}\n')
+        f.write(f'SLD    {soil_path}\n')
+        f.write(f'STD    {std_path}\n')
+        
+    subprocess.run([bin_path, 'C', exp_pathfile, str(experimentid)],
+                   capture_output=True, text=True,
+                    #stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                    shell= True, cwd=tmppath, env = {"DSSAT_HOME":dssatpath})
+    
     if os.path.exists(
         os.path.join(tmppath,'Summary.OUT')):
         valtoreturn = {os.path.basename(path): True}
@@ -101,7 +118,9 @@ def run_experiment_dssat(path, experimentid,crop_code, bin_path = None, remove_f
 
 
 def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder = False):
-    from DSSATTools.run import CONFILE, CRD_PATH, SLD_PATH, DSSAT_HOME, BIN_PATH, STD_PATH
+    from DSSATTools.run import CRD_PATH, SLD_PATH, DSSAT_HOME, BIN_PATH, STD_PATH
+    
+    
     exp_pathfile = glob.glob(path+'/*.{}X*'.format(crop_code))
     if len(exp_pathfile)==0:
         print(' There is no experimental file, please generated first')
@@ -241,7 +260,7 @@ class DSSATBase(ModelBase):
         for pathtiprocess in self._process_paths:
             crop_manager.write(pathtiprocess)
     
-    def run(self, crop_code, crop, planting_window, bin_path = None, parallel_tr= True, ncores = 10, remove_tmp_folder = False) -> None:
+    def run(self, crop_code, crop, planting_window, bin_path = None, parallel_tr= True, ncores = 10, remove_tmp_folder = False, dssat_path:str = None) -> None:
         
         """
         Run DSSAT simulations for all processing paths.
@@ -260,6 +279,8 @@ class DSSATBase(ModelBase):
             Number of cores to use for parallel processing.
         remove_tmp_folder : bool, default=False
             Whether to remove temporary folders after simulations.
+        dssat_path: str, optional
+            Path to DSSAT folder.
 
         Returns
         -------
@@ -282,7 +303,7 @@ class DSSATBase(ModelBase):
                                                         crop_code,crop, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
                         else:
                             future_to_tr ={executor.submit(run_experiment_dssat, pathiprocess, i, 
-                                                        crop_code,bin_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
+                                                        crop_code,crop, bin_path, dssat_path, remove_folder = remove_tmp_folder): (i) for i in range(1,planting_window+1)}
 
                         for future in concurrent.futures.as_completed(future_to_tr):
                                 tr = future_to_tr[future]
