@@ -1,0 +1,29 @@
+GENERAL_INFO: 
+  country: 'Honduras'
+  country_code: 'HND' # crountry code
+  working_path: 'runs' # the model outputs will be located in this path
+  ncores: 10,
+  model: 'dssat'
+  bin_path: 'C:/DSSAT48/DSCSM048.EXE'
+  dssat_path: 'C:/DSSAT48/'
+
+SPATIAL_INFO:
+  geospatial_path: 'data/tb_limitealdeas.shp' # spatial file that contains the region of interest
+  feature_name: 'GEOCODIGO' ## an unique code that represent each region of interest
+  aggregate_by : 'texture'
+  soil_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/soil/hnd_soilgrids_data.nc'
+  weather_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/climate_2010_2024_data_wnvp_.nc'
+  scale_factor: 10 
+
+CROP:
+  name: Cassava
+  cultivar: 'UC0008'
+  cultivar_file: Null
+
+MANAGEMENT:
+  planting_date: '2015-04-01'
+  harvesting_date: '2016-03-30'
+  plantingWindow: 31
+  fertilizer: False
+  index_soilwat: 1
+  template: 'crop_modeling/dssat/exp_files/AGRW2409.CSX'

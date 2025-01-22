@@ -1,0 +1,53 @@
+GENERAL_INFO: 
+  country: 'Honduras'
+  country_code: 'HND' # crountry code
+  working_path: 'runs' # the model outputs will be located in this path
+  ncores: 10,
+  model: 'caf'
+  bin_path: Null
+
+SPATIAL_INFO:
+  geospatial_path: 'data/tb_limitealdeas.shp' # spatial file that contains the region of interest
+  feature_name: 'GEOCODIGO' ## an unique code that represent each region of interest
+  aggregate_by : 'texture'
+  soil_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/soil/hnd_soilgrids_data.nc'
+  weather_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/climate_2010_2024_data_wnvp_.nc'
+  dem_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/dem_hnd/terrain_.nc'
+  scale_factor: 10 
+
+CROP:
+  name: Coffee
+  parameters: 'crop_modeling/caf/parameters/parameters_default.txt'
+
+MANAGEMENT:
+  TREE:
+    species_name: banana
+    tree_density: 0.05
+
+  planting_date: '2010-01-01'
+  fertilization:
+    years: [2010,2011,2012,2013,2014,2015]
+    dayofyear: [100,200,300]
+    n_fertilization_per_year: 3
+    N_amount: [50, 100, 50]
+
+  coffee_prunning:
+    years: [2010,2011,2012,2013,2014,2015]
+    dayofyear: [100,200,300]
+    n_prunning_peryear: 3
+    prun_fraction: 0.25
+
+  tree_prunning:
+    tree_n: 1
+    years: [2010,2011,2012,2013,2014,2015]
+    dayofyear: [100,200,300]
+    n_prunning_peryear: 3
+    prun_fraction: 0.1
+
+  tree_thinning:
+    tree_n: 1
+    years: [2010,2011,2012,2013,2014,2015]
+    dayofyear: [100,200,300]
+    n_thinning_peryear: 3
+    thinning_fraction: 0.1
+  
