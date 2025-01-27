@@ -1,8 +1,11 @@
 __pycache__/
+model_configurations/
+code.py
 weather/
 soil/
 dem/
 Py_DSSATTools/
+runs/
 spatialdata/__pycache__/climate_data.cpython-39.pyc
 spatialdata/__pycache__/data_cube_utils.cpython-39.pyc
 spatialdata/__pycache__/datacube.cpython-39.pyc

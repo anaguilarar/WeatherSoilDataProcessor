@@ -69,6 +69,32 @@ def create_dssat_tmp_env(source_path, tmp_path, exp_file):
     shutil.copy2(crop[0], tmp_path)
     shutil.copy2(eco[0], tmp_path)
     shutil.copy2(spe[0], tmp_path)
+
+def create_dssat_config_path_file(workdir_path,  crop_code, crop, dssat_path, wth_path, crd_path, soil_path, std_path) -> None:
+    
+    crop_model = 'CRGRO' if crop_code == 'BN' else CROPS_MODULES[crop]
+    
+    with open(os.path.join(workdir_path, CONFILE), 'w') as f:
+        f.write(f'WED    {wth_path}\n')
+        f.write(f'M{crop_code}    {workdir_path} dscsm048 {crop_model}{VERSION}\n')
+        f.write(f'CRD    {crd_path}\n')
+        f.write(f'PSD    {os.path.join(dssat_path, "Pest")}\n')
+        f.write(f'SLD    {soil_path}\n')
+        f.write(f'STD    {std_path}\n')
+
+def check_exp_summary_name(workdir_path, run_path, experiment_id, removeworking_path_folder: bool = False):
+    
+    if os.path.exists(
+        os.path.join(workdir_path,'Summary.OUT')):
+        valtoreturn = {os.path.basename(run_path): True}
+        if not os.path.exists(os.path.join(run_path, f'Summary_{experiment_id}.OUT')):
+            shutil.copyfile(os.path.join(workdir_path, 'Summary.OUT'), os.path.join(run_path,f'Summary_{experiment_id}.OUT'))
+        if removeworking_path_folder:
+            shutil.rmtree(workdir_path, ignore_errors=False, onerror=None)
+    else:
+        valtoreturn = {os.path.basename(run_path): False}
+        
+    return valtoreturn
     
 def run_experiment_dssat(path, experimentid,crop_code, crop,bin_path = None, dssat_path = None, remove_folder = False):
 
@@ -86,35 +112,16 @@ def run_experiment_dssat(path, experimentid,crop_code, crop,bin_path = None, dss
     tmppath = os.path.join(path, f'_{experimentid}')
     create_dssat_tmp_env(path, tmppath, exp_pathfile)
     
-    wth_path = os.path.join(tmppath,'WTHE0001')
-    std_path = os.path.join(dssat_path, 'StandardData')
-    crd_path = os.path.join(dssat_path, 'Genotype')
-    soil_path = os.path.join(dssat_path, 'Soil')
-
-    with open(os.path.join(tmppath, CONFILE), 'w') as f:
-        f.write(f'WED    {wth_path}\n')
-        f.write(f'M{crop_code}    {tmppath} dscsm048 {CROPS_MODULES[crop]}{VERSION}\n')
-        f.write(f'CRD    {crd_path}\n')
-        f.write(f'PSD    {os.path.join(dssatpath, "Pest")}\n')
-        f.write(f'SLD    {soil_path}\n')
-        f.write(f'STD    {std_path}\n')
+    create_dssat_config_path_file(tmppath, crop_code,crop, dssatpath,os.path.join(tmppath,'WTHE0001') , 
+                                os.path.join(dssat_path, 'Genotype'), os.path.join(dssat_path, 'Soil'), os.path.join(dssat_path, 'StandardData'))
         
     subprocess.run([bin_path, 'C', exp_pathfile, str(experimentid)],
-                   capture_output=True, text=True,
-                    #stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                    shell= True, cwd=tmppath, env = {"DSSAT_HOME":dssatpath})
+                    cwd=tmppath, capture_output=True, text=True,
+                    env = {"DSSAT_HOME":dssatpath})
     
-    if os.path.exists(
-        os.path.join(tmppath,'Summary.OUT')):
-        valtoreturn = {os.path.basename(path): True}
-        if not os.path.exists(os.path.join(path, f'Summary_{experimentid}.OUT')):
-           shutil.copyfile(os.path.join(tmppath, 'Summary.OUT'), os.path.join(path,f'Summary_{experimentid}.OUT'))
-        if remove_folder:
-            shutil.rmtree(tmppath, ignore_errors=False, onerror=None)
-        
-    else:
-        valtoreturn = {os.path.basename(path): False}
-    return valtoreturn
+    proccess_finsihed = check_exp_summary_name(tmppath, path, experimentid, removeworking_path_folder=remove_folder)
+    
+    return proccess_finsihed
 
 
 def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder = False):
@@ -136,29 +143,15 @@ def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder =
     create_dssat_tmp_env(path, tmppath, exp_pathfile)
 
     wth_path = os.path.join(tmppath,'WTHE0001')
-
-    with open(os.path.join(tmppath, CONFILE), 'w') as f:
-        f.write(f'WED    {wth_path}\n')
-        f.write(f'M{crop_code}    {tmppath} dscsm048 {CROPS_MODULES[crop]}{VERSION}\n')
-        f.write(f'CRD    {CRD_PATH}\n')
-        f.write(f'PSD    {os.path.join(DSSAT_HOME, "Pest")}\n')
-        f.write(f'SLD    {SLD_PATH}\n')
-        f.write(f'STD    {STD_PATH}\n')
+    create_dssat_config_path_file(tmppath, crop_code, crop, DSSAT_HOME, wth_path, CRD_PATH, SLD_PATH, STD_PATH)
         
     subprocess.run([BIN_PATH, 'C', exp_pathfile, str(experimentid)],
                     cwd=tmppath, capture_output=True, text=True,
                     env={"DSSAT_HOME": DSSAT_HOME, })
-    if os.path.exists(
-        os.path.join(tmppath,'Summary.OUT')):
-        valtoreturn = {os.path.basename(path): True}
-        if not os.path.exists(os.path.join(path, f'Summary_{experimentid}.OUT')):
-           shutil.copyfile(os.path.join(tmppath, 'Summary.OUT'), os.path.join(path,f'Summary_{experimentid}.OUT'))
-        if remove_folder:
-            shutil.rmtree(tmppath, ignore_errors=False, onerror=None)
-        
-    else:
-        valtoreturn = {os.path.basename(path): False}
-    return valtoreturn
+    
+    proccess_finsihed = check_exp_summary_name(tmppath, path, experimentid, removeworking_path_folder=remove_folder)
+    
+    return proccess_finsihed
 
 
 class DSSATBase(ModelBase):
