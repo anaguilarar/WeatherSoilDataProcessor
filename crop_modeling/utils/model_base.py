@@ -60,7 +60,7 @@ class BaseOutputData(ABC):
         """
         self.data = {}
         self.path = path
-        print(path)
+
 
     @property
     @abstractmethod
@@ -89,7 +89,7 @@ class BaseOutputData(ABC):
         list
             List of file paths matching the specified type.
         """
-        print(self.extent_files[data_type])
+
         fns = glob.glob(self.path + f"/*{self.extent_files[data_type]}*")
         assert len(fns) > 0, f"No files were found for {data_type}"
         return fns

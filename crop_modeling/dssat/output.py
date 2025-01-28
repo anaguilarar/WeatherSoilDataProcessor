@@ -8,6 +8,20 @@ import pandas as pd
 
 from datetime import datetime
 
+def update_dssat_data_using_path(path):
+
+
+    groupclasses = [
+        i for i in os.listdir(path) if os.path.isdir(os.path.join(path, i))
+    ]
+
+    return {
+        groupclasses[i]: DSSATOutputData(os.path.join(path, groupclasses[i]))
+        for i in range(len(groupclasses))
+    }
+
+
+
 class DSSATOutput(DSSATFiles):
 
     def __init__(self, path) -> None:        
@@ -89,4 +103,4 @@ class DSSATOutputData(BaseOutputData):
         self.data["soil"] = df
         return df
 
-        
+    

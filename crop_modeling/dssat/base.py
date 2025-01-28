@@ -3,13 +3,11 @@ import os
 from DSSATTools.base.sections import Section, clean_comments
 from DSSATTools.crop import CROPS_MODULES, VERSION, Crop
 from DSSATTools.run import CONFILE
-import os
 
-from typing import List
 import pandas as pd
-from typing import Optional
+from typing import Optional, List
+from tqdm import tqdm
 from pathlib import Path
-from ..utils.process import summarize_datacube_as_df
 
 from .files_export import from_soil_to_dssat,from_weather_to_dssat
 from .management import DSSATManagement_base
@@ -18,7 +16,7 @@ from .files_reading import delimitate_header_indices, join_row_using_header_indi
 from omegaconf import OmegaConf
 import subprocess
 from ._base import DSSATFiles, section_indices, coords_from_soil_file
-from multiprocessing import Pool
+#from multiprocessing import Pool
 import concurrent.futures
 import shutil
 import platform
@@ -282,7 +280,7 @@ class DSSATBase(ModelBase):
         """
         process_completed = {}
         if parallel_tr:
-            for pathiprocess in self._process_paths:
+            for pathiprocess in tqdm(self._process_paths):
                 if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
                         print(f'soil file not found in :{pathiprocess}')
                         process_completed[os.path.basename(pathiprocess)] = False 
@@ -328,33 +326,19 @@ class DSSATBase(ModelBase):
                 process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
 
         return process_completed
-                
-    def run_using_r(self) -> None:
-        """
-        Run DSSAT simulations using an R script.
-        """
-        for pathiprocess in self._process_paths:
-            soil = glob.glob(pathiprocess+'/*.SOL*')
-            if len(soil)==0: continue
-            dirname = os.path.dirname(soil[0])
-            if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
-            
-            os.rename(soil[0], os.path.join(dirname, 'TR.SOL'))
-            config_path = os.path.join(pathiprocess, 'experimental_file_config.yaml')
-            returned_value = subprocess.call(['RScript', './r_scripts/r_run_dssat.R', f'{config_path}'] , shell= True)
-            #if os.path.exists(os.path.join(dirname, 'TR.SOL')): os.remove(os.path.join(dirname, 'TR.SOL'))
-    
+
     def from_datacube_to_files(
             self,
-            xrdata,
+            dfdata,
             data_source: str = 'climate',
             dim_name: str = None,
-            target_crs: str = 'EPSG:4326',
             group_by: Optional[str] = None,
             group_codes: Optional[dict] = None,
             outputpath: str = None,
             country = None,
-            site = None
+            site = None,
+            sub_working_path = None,
+            verbose = True
         ) -> pd.DataFrame:
         """
         Converts data from a datacube to DSSAT-compatible files.
@@ -373,7 +357,8 @@ class DSSATBase(ModelBase):
             Grouping column for data aggregation.
         group_codes : dict, optional
             Group codes for the data.
-
+        sub_workingdict_path: str, optional
+            Sub directory taht will be allocate the dssat files
         Returns
         -------
         pd.DataFrame
@@ -382,20 +367,19 @@ class DSSATBase(ModelBase):
         
         if not dim_name:
             dim_name = 'date' if data_source == 'climate' else 'depth'
-            
-        dfdata = summarize_datacube_as_df(xrdata, dimension_name= dim_name, group_by = group_by, project_to= target_crs)
         
         if data_source == 'climate':
             from_weather_to_dssat(dfdata, date_name = dim_name, group_by = group_by,
-                        outputpath=outputpath, outputfn = 'WTHE0001', codes=group_codes)
+                        outputpath=outputpath, outputfn = 'WTHE0001', codes=group_codes, 
+                        sub_working_path= sub_working_path)
         
         if data_source == 'soil':
             from_soil_to_dssat(dfdata, group_by=group_by, depth_name= dim_name,
                                     outputpath=outputpath, outputfn='SOL', codes=group_codes, 
-                                    country = country,site = site, soil_id='TRAN00001')
-            
-        return dfdata
-
+                                    country = country,site = site, soil_id='TRAN00001', 
+                                    sub_working_path = sub_working_path, verbose = verbose)
+        
+        
 class DSSATCrop_base(Crop):
     
     def __init__(self, crop_name: str = 'Maize', cultivar_code: str = None):
