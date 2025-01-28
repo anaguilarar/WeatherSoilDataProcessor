@@ -2,7 +2,7 @@ GENERAL_INFO:
   country: 'Honduras'
   country_code: 'HND' # crountry code
   working_path: 'runs' # the model outputs will be located in this path
-  ncores: 10,
+  ncores: 10
   model: 'dssat'
   bin_path: C:/DSSAT48/DSCSM048.EXE #'D:/DSSAT048/bin/dscsm048.exe'
   dssat_path: C:/DSSAT48 #'D:/DSSAT048/'
