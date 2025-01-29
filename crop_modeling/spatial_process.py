@@ -4,22 +4,20 @@ import pandas as pd
 import pickle
 import os
 import rasterio as rio
+import shutil
 
 from omegaconf import OmegaConf
 from tqdm import tqdm
-from typing import Any, Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple
 from pathlib import Path
 
-from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset, summarize_datacube_as_df, project_dataframe
+from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset, summarize_datacube_as_df, model_selection
 from .utils.u_soil import get_layer_texture, get_soil_datacube
 from .utils.u_weather import get_weather_datacube, WeatherTransformer
 
 from spatialdata.datacube import create_dimension, reproject_xrdata
-from spatialdata.gis_functions import masking_rescaling_xrdata
+from spatialdata.gis_functions import masking_rescaling_xrdata, list_tif_2xarray
 from spatialdata.xr_dict import CustomXarray, from_dict_toxarray
-from spatialdata.gis_functions import list_tif_2xarray
-
-from crop_modeling.utils.process import model_selection
 
 import concurrent.futures
 
@@ -491,7 +489,7 @@ class SpatialCM():
         if os.path.exists(self._soil_tmptpath) and os.path.exists(self._weather_tmppath):
             soilm = SpatialData()._open_dataset(self._soil_tmptpath)
             weatherm = SpatialData()._open_dataset(self._weather_tmppath)
-            demm = SpatialData()._open_dataset(self._dem_tmptpath) if os.path.exists(dself._em_tmptpath) else None
+            demm = SpatialData()._open_dataset(self._dem_tmptpath) if os.path.exists(self._dem_tmptpath) else None
         else:
             # extract individual data
             weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor, buffer= buffer)
@@ -527,6 +525,8 @@ class SpatialCM():
                                                         outputpath= self._tmp_path,
                                                         country = self.country.upper(),
                                                         site = self.site)
+                self.check_dssat_env_paths()
+                    
             if pixel_scale:
                 
                 xrref, pxs_withdata = self.create_env_variables_at_pixellevel(weatherm, soilm, target_crs =crs)
@@ -589,7 +589,8 @@ class SpatialCM():
                     except Exception as exc:
                             print(f"Request for treatment {idpx} generated an exception: {exc}")
                     pbar.update(1)
-        
+                    
+        self.check_dssat_env_paths()
         return xrref, processed_pxs
 
     def set_up_folders(self, site = None) -> None:
@@ -618,8 +619,19 @@ class SpatialCM():
         self._soil_tmptpath = os.path.join(self._tmp_path, 'soil_.nc')
         self._dem_tmptpath = os.path.join(self._tmp_path, 'dem_.nc')
         
-        
-        
+    def check_dssat_env_paths(self):
+
+        subprocess_paths_weather = self.model.find_envworking_paths(self._tmp_path, 'WTH')
+        subprocess_paths_soil = self.model.find_envworking_paths(self._tmp_path, 'SOL')
+        if len(subprocess_paths_soil) != len(subprocess_paths_weather):
+            longestpath = subprocess_paths_soil if len(subprocess_paths_soil)>len(subprocess_paths_weather) else subprocess_paths_weather
+            smallest_path = subprocess_paths_weather if len(subprocess_paths_soil)>len(subprocess_paths_weather) else subprocess_paths_soil
+            for spath in longestpath:
+                if not spath in smallest_path and os.path.exists(spath):
+                    shutil.rmtree(spath, ignore_errors=False, onerror=None)
+            
+            self.model._process_paths = smallest_path
+            
     def group_spatial_layer(self, soildata):
         group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         grouplayer = soildata.isel(depth = 0)[group_by]
