@@ -213,7 +213,7 @@ class SpatialData():
             The loaded dataset.
         """
         if filepath.endswith('.nc'):
-            with xarray.open_dataset(filepath, engine = engine) as ds:
+            with xarray.open_dataset(filepath, engine = engine, chunks  = 'auto') as ds:
                 data = ds.copy()
         elif filepath.endswith('.pickle'):
             with open(filepath, 'rb') as fn:

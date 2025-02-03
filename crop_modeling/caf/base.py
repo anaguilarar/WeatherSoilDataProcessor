@@ -70,12 +70,14 @@ class PyCAF(ModelBase):
     
     def _dict_config_file(self,
         output_path: str,
+        planting_date: str,
         fert: np.ndarray,
         coffee_prun: np.ndarray,
         tree_prun: np.ndarray,
         tree_thinning: np.ndarray,
         ndays: Optional[int] = None,
         dll_path: Optional[str] = None
+
     ) -> Dict:
         """
         Creates a dictionary representation of the configuration file for the model.
@@ -109,6 +111,7 @@ class PyCAF(ModelBase):
                     'working_path': output_path
                 },
             'MANAGEMENT': {
+                'planting_date': planting_date,
                 'coffe_prun':  self._change_to_list(coffee_prun),
                 'tree_prun': self._change_to_list(tree_prun),
                 'tree_thinning': self._change_to_list(tree_thinning),
@@ -161,7 +164,7 @@ class PyCAF(ModelBase):
             cafsoil(depth_var_name = 'depth', group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
 
     def _calculate_total_days(self):
-    
+        
         init_date = datetime.strptime('{:0.0f}-{:0.0f}'.format(self._weather[0][0],self._weather[0][1]), '%Y-%j')
         end_date = datetime.strptime('{:0.0f}-{:0.0f}'.format(self._weather[-1][0],self._weather[-1][1]), '%Y-%j')
         difdays = end_date - init_date
@@ -296,10 +299,12 @@ class PyCAF(ModelBase):
         """
         
         weatherdf = pd.read_csv(weather_path)
+        
+        if init_year: 
+            weatherdf = weatherdf.loc[weatherdf.year >= init_year]
+            if init_doy: weatherdf = weatherdf.loc[~np.logical_and(weatherdf.doy < init_doy, weatherdf.year == init_year)]
+        
         weather_data = np.zeros((weatherdf.shape[0], 8), dtype= float)
-        if init_year: weatherdf = weatherdf.loc[weatherdf.year >= init_year]
-        if init_doy: weatherdf = weatherdf.loc[weatherdf.doy >= init_doy]
-
         weather_data[:weatherdf.shape[0],:] = weatherdf.values
         self._weather = weather_data
         
@@ -356,15 +361,21 @@ class PyCAF(ModelBase):
         """
         
         if len(self._process_paths) == 0: self.find_envworking_paths(file_ext='csv')
-        
+        planting_date = kwargs.get('planting_date', None)
+        doy, year = None, None
+        if planting_date:
+            doy = datetime.strptime(planting_date,  '%Y-%m-%d').timetuple().tm_yday 
+            year = datetime.strptime(planting_date,  '%Y-%m-%d').date().year
+            
         for pathiprocess in self._process_paths:
             print(pathiprocess)
             self.set_soil_parameters(os.path.join(pathiprocess, 'cafsoil.csv'))
             self.set_location_parameters(os.path.join(pathiprocess, 'cafdem.csv'))
-            _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'))
+            _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'), init_doy=doy, init_year=year)
             self.write_run_config_file(pathiprocess, **kwargs)
             
     def write_run_config_file(self,  output_path: str,
+        planting_date: str,
         fert: np.ndarray,
         coffee_prun: np.ndarray,
         tree_prun: np.ndarray,
@@ -379,6 +390,8 @@ class PyCAF(ModelBase):
         ----------
         output_path : str
             Path to save the configuration file.
+        planting_date: str,
+            Coffee tree planting date
         fert : np.ndarray
             Fertilization schedule.
         coffee_prun : np.ndarray
@@ -392,7 +405,7 @@ class PyCAF(ModelBase):
         dll_path : str, optional
             Path to the CAF model DLL file, by default None.
         """
-        config_info = self._dict_config_file(output_path, fert, coffee_prun, 
+        config_info = self._dict_config_file(output_path, planting_date, fert, coffee_prun, 
                                              tree_prun, tree_thinning, ndays, dll_path)
         
         config_path = os.path.join(output_path, 'config_file.yaml')
