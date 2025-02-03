@@ -161,15 +161,25 @@ parameters = config$PARAMETERS[[1]]
 # weather
 weather = t(unname(as.matrix(data.frame(config$WEATHER[[1]]))))
 totaldays = config$NDAYS
-
 NMAXDAYS              <- as.integer(10000)
+
+if(totaldays>NMAXDAYS){
+  totaldays = NMAXDAYS
+}
+
 NWEATHER              <- as.integer(8)
 matrix_weather        <- matrix( 0., nrow=NMAXDAYS, ncol=NWEATHER )
+
+if(dim(weather)[1]>10000){
+  weather = weather[1:10000,]
+  }
 
 matrix_weather[1:dim(weather)[1],] = weather
 
 # bin config
+
 MODEL_dll      <- config$GENERAL$caf_dll_path
+
 dyn.load( MODEL_dll )
 #
 output <- run_model( p     = parameters,
@@ -181,8 +191,10 @@ output <- run_model( p     = parameters,
                      n     = totaldays )
 
 dfoutput = data.frame(output)
+
 names(dfoutput) = unlist(yNames)
 write.csv(dfoutput, file.path(wp,"output.csv"))
+print(paste0("** Output saved in : ",wp,"/output.csv"))
 
 png(file.path(wp,"harvesting.png"))
 plot_output( output, vars=c("Ac(1)","Ac(2)","harvDM_f_hay") )
