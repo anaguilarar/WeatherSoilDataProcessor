@@ -338,6 +338,7 @@ class ClimateDataDownload(object):
         return {   'precipitation': 'datacube',
             'temperature': 'datacube',
             'solar_radiation': 'agera5',
+            'wind_speed': 'agera5',
             'relative_humidity': 'datacube'
             }
         
@@ -355,6 +356,7 @@ class ClimateDataDownload(object):
         return {
             'precipitation': 'chirps',
             'temperature': 'agera5',
+            'wind_speed': 'agera5',
             'solar_radiation': 'agera5',
             'relative_humidity': 'agera5'
         }
@@ -400,10 +402,17 @@ class ClimateDataDownload(object):
             
             outputpath = self._create_dowload_folder(var, self.output_folder, suffix_output_folder)
 
+            if 'wind_speed' in var:
+                file_paths = self._get_wind_speed(mission=info['mission'], 
+                                            urlhost=info['source'],
+                                            output_path=outputpath,
+                                            statistic = "24_hour_mean")
+                
             if 'relative_humidity' in var:
                 file_paths = self._get_relative_humidity(mission=info['mission'], 
                                             urlhost=info['source'],
-                                            output_path=outputpath)
+                                            output_path=outputpath,
+                                            time = info['time'])
                 
             elif 'solar_radiation' in var:
                 file_paths = self._get_solar_radiation(mission=info['mission'], 
@@ -430,6 +439,8 @@ class ClimateDataDownload(object):
 
             if export_as_netcdf:
                 yearlist = list(file_paths.keys())
+                yearlistint = [int(i) for i in yearlist]
+                yearlistint.sort()
                 self.stack_annual_data(outputpath, yearlist[0], yearlist[-1], outputpath)
             
 
@@ -505,6 +516,40 @@ class ClimateDataDownload(object):
                 'download_path':  output_folder
             }
 
+    def _get_wind_speed(self, mission = None, urlhost = None, output_path = None, statistic = "24_hour_mean"):
+        """
+        function for downloading 10m_wind_speed data.
+
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        """
+        mission = self.missions()['relative_humidity'] if mission is None else mission
+        urlhost = self.download_from()['relative_humidity'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+
+        if mission == 'agera5' and urlhost == 'datacube':
+            #request = self._query_config(product = 'datacube', mission = mission, 
+            #variable = 'relativehumidity', output_folder= output_path)
+            #print('request: {}'.format(request))
+            #dc_f = download_file(**request)
+            #return dc_f    
+            pass
+
+        if mission == 'agera5' and urlhost == 'agera5':
+            return donwload_mlt_data_from_agera5('10m_wind_speed', 
+                                        starting_date= self._init_date,
+                                        ending_date=self._ending_date, 
+                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
+                                        output_folder= output_path,
+                                        statistic = statistic)
+
+
     def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None, ncores = 10):
         """
         function for downloading relativity_humidity data.
@@ -518,12 +563,17 @@ class ClimateDataDownload(object):
         output_path : str
             The directory to save the downloaded data.
         """
-        mission = self.missions()['relativity_humidity'] if mission is None else mission
-        urlhost = self.download_from()['relativity_humidity'] if urlhost is None else urlhost
+        mission = self.missions()['relative_humidity'] if mission is None else mission
+        urlhost = self.download_from()['relative_humidity'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
 
         if mission == 'agera5' and urlhost == 'datacube':
-            raise ValueError("not implemented yet") ##TODO
+            request = self._query_config(product = 'datacube', mission = mission, 
+            variable = 'relativehumidity', output_folder= output_path)
+            print('request: {}'.format(request))
+            dc_f = download_file(**request)
+            return dc_f    
+
 
         if mission == 'agera5' and urlhost == 'agera5':
             return donwload_mlt_data_from_agera5('2m_relative_humidity', 
@@ -783,7 +833,4 @@ class MLTWeatherDataCube(DataCubeBase):
         self.directory_paths = directory_paths
         self.folder_manager = folder_manager
         super().__init__( extent)
-        
 
-
-        
