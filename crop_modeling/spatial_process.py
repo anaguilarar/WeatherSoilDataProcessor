@@ -480,9 +480,6 @@ class SpatialCM():
             raise ValueError("Provide either an ROI index or a GeoDataFrame for the region of interest.")
         
         roi = roi.to_crs(self.climate.rio.crs)
-        roi_name = roi[self.config.SPATIAL_INFO.feature_name].values[0]
-        # create folders   
-        self.set_up_folders(site = roi_name)
         buffer = self._buffer(roi)
         
         self.country = self.config.GENERAL_INFO.get('country', None)
@@ -490,8 +487,10 @@ class SpatialCM():
             soilm = SpatialData()._open_dataset(self._soil_tmptpath)
             weatherm = SpatialData()._open_dataset(self._weather_tmppath)
             demm = SpatialData()._open_dataset(self._dem_tmptpath) if os.path.exists(self._dem_tmptpath) else None
+            if demm is None and self.model.name == 'caf':
+                # extract individual data
+                weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor, buffer= buffer)
         else:
-            # extract individual data
             weatherm, soilm, demm = get_roi_data(roi, self.climate, self.soil, dem_data= self.dem, aggregate_by=group_by, scale_factor= self.config.SPATIAL_INFO.scale_factor, buffer= buffer)
         ## check both have data
         datainweather = all(not all(np.isnan(np.unique(weatherm.isel(date = 0)[var].values))) for var in list(weatherm.data_vars.keys()))
@@ -502,12 +501,12 @@ class SpatialCM():
         # export spatial data
         if export_spatial_data and not (os.path.exists(self._soil_tmptpath) and os.path.exists(self._weather_tmppath)):
             for data, name in zip([weatherm, soilm, demm],['weather','soil','dem']):
-                data.attrs['dtype'] = 'float'
-                SpatialData()._save_asnc(data, fn = os.path.join(self._tmp_path, f'{name}_.nc'))
-        # export spatial group layer
+                if data is not None:
+                    data.attrs['dtype'] = 'float'
+                    SpatialData()._save_asnc(data, fn = os.path.join(self._tmp_path, f'{name}_.nc'))
+
         
         pixel_scale =  group_by == 'pixel'
-
         if self.model.name == 'dssat':
             # export data as dssat files
             if not pixel_scale:
@@ -534,7 +533,7 @@ class SpatialCM():
                 xrref[list(xrref.data_vars)[0]].rio.to_raster(os.path.join(self._tmp_path, 'ref_raster.tif'))
                 
         if self.model.name == 'caf':
-            
+            if create_group_splayer: self.group_spatial_layer(soilm)
             for data, datatype in zip([weatherm, soilm, demm],['climate', 'soil', 'dem']):
                 if data is not None:
                     self.model.from_datacube_to_files(data, data_source= datatype, target_crs=crs, group_by = group_by, group_codes = group_codes,

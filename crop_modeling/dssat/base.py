@@ -320,7 +320,7 @@ class DSSATBase(ModelBase):
                         file_path_pertr[str(tr)] = run_experiment_dssat_bin(pathiprocess, tr, 
                                                 crop_code,crop, remove_folder = remove_tmp_folder)
                     else:
-                        file_path_pertr[str(tr)] =run_experiment_dssat(pathiprocess, tr, 
+                        file_path_pertr[str(tr)] = run_experiment_dssat(pathiprocess, tr, 
                                                             crop_code,bin_path, remove_folder = remove_tmp_folder)
             
                 process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])

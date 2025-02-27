@@ -8,7 +8,7 @@ class CAFOutputData(BaseOutputData):
     
     @property
     def extent_files(self):
-        return {"climate": "cafweather", "soil": "cafsoil", "output": "output.csv"}
+        return {"climate": "cafweather", "soil": "cafsoil", "output": "output_"}
 
     def output_data(self, year: int = None) -> pd.DataFrame:
         fn_path = self.get_files("output")
@@ -21,15 +21,15 @@ class CAFOutputData(BaseOutputData):
             )
         )
         dflist = []
-        for fn in fn_path:
+        fn_path.sort()
+
+        for n_run, fn in enumerate(fn_path):
             df = pd.read_csv(fn)
-            if year:
-                df = df.loc[df.year == year]
             year = df.year.values
             doy = df.doy.values
             df["HDAT"] = [datetime.strptime('{:0.0f}-{:0.0f}'.format(y,d), '%Y-%j')
             for y,d in zip(year, doy)]
-            
+            df["n_cycle"] = n_run+1
             dflist.append(df)
         df = pd.concat(dflist)
         self.data["output"] = df

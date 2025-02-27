@@ -80,7 +80,9 @@ class DSSATOutputData(BaseOutputData):
             df = dssatoutput.read_output_file_aspddf()
             if year:
                 df = df.loc[df["PDAT"].dt.year == year]
-            dflist.append(df)
+
+            if df.shape[0]>0:
+                dflist.append(df)
         df = pd.concat(dflist)
         #lat, long = coords_from_soil_file(self.get_files("soil")[0])
         #df["LAT"] = lat

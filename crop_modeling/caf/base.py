@@ -18,6 +18,7 @@ from datetime import datetime
 from typing import List, Optional, Dict, Tuple
 
 from pathlib import Path
+import shutil
 
 def cafos_model():
     opsys = platform.system().lower()
@@ -30,7 +31,24 @@ def cafos_model():
 
     return str(dll_path)
 
-
+def copy_files(src_file_name, target_file_name, src_path, target_path, remove_source_files = True):
+    
+    if not os.path.exists(os.path.join(target_path, target_file_name)):
+        shutil.copyfile(os.path.join(src_path, src_file_name), os.path.join(target_path,target_file_name))
+    if remove_source_files:
+        shutil.rmtree(src_path, ignore_errors=False, onerror=None)
+    
+    
+def check_exp_summary_name(workdir_path, run_path, experiment_id, removeworking_path_folder: bool = False):
+    
+    if os.path.exists(os.path.join(workdir_path,'output.csv')):
+        valtoreturn = {os.path.basename(run_path): True}
+        copy_files('output.csv', f'output_{experiment_id}.csv', 
+                src_path = workdir_path, target_path = run_path, remove_source_files=removeworking_path_folder)
+    else:
+        valtoreturn = {os.path.basename(run_path): False}
+        
+    return valtoreturn
 
 class PyCAF(ModelBase):
     """
@@ -75,6 +93,7 @@ class PyCAF(ModelBase):
         coffee_prun: np.ndarray,
         tree_prun: np.ndarray,
         tree_thinning: np.ndarray,
+        life_cycle_years: Optional[int] = None,
         ndays: Optional[int] = None,
         dll_path: Optional[str] = None
 
@@ -112,6 +131,7 @@ class PyCAF(ModelBase):
                 },
             'MANAGEMENT': {
                 'planting_date': planting_date,
+                'lyfe_cycle_years': life_cycle_years,
                 'coffe_prun':  self._change_to_list(coffee_prun),
                 'tree_prun': self._change_to_list(tree_prun),
                 'tree_thinning': self._change_to_list(tree_thinning),
@@ -279,7 +299,7 @@ class PyCAF(ModelBase):
         parameters_to_modify = {'{}({})'.format(k, id_tree):v for k,v in tree_parameters.items()}
         self.change_parameters(parameters_to_modify=parameters_to_modify)
     
-    def read_weather(self, weather_path: str, init_year: Optional[int] = None, init_doy: Optional[int] = None) -> np.ndarray:
+    def read_weather(self, weather_path: str, init_year: Optional[int] = None, init_doy: Optional[int] = None, ending_year: Optional[int] = None) -> np.ndarray:
         """
         Reads weather data from a CSV file and filters it based on initial year and day of the year.
 
@@ -291,7 +311,8 @@ class PyCAF(ModelBase):
             Filter records with a year greater than or equal to this value, by default None.
         init_doy : int, optional
             Filter records with a day of year (DOY) greater than or equal to this value, by default None.
-
+        ending_year: int, optional
+            Filter records with a year less than or equal to this value
         Returns
         -------
         np.ndarray
@@ -303,7 +324,9 @@ class PyCAF(ModelBase):
         if init_year: 
             weatherdf = weatherdf.loc[weatherdf.year >= init_year]
             if init_doy: weatherdf = weatherdf.loc[~np.logical_and(weatherdf.doy < init_doy, weatherdf.year == init_year)]
-        
+        if ending_year:
+            weatherdf = weatherdf.loc[weatherdf.year <=ending_year]
+            
         weather_data = np.zeros((weatherdf.shape[0], 8), dtype= float)
         weather_data[:weatherdf.shape[0],:] = weatherdf.values
         self._weather = weather_data
@@ -311,21 +334,36 @@ class PyCAF(ModelBase):
         return weather_data
 
     
-    def run(self, cwd: str = None) -> None:
+    def run(self, n_cycles: Optional[int] = None, cwd: Optional[str] = None) -> None:
         """
         Executes the CAF model using the configuration file.
 
         Parameters
         ----------
+        n_cycles : int
+            Coffee plant number of life cycles for running the model
         cwd : str
             Current working directory for running the model.
         """
-        for pathiprocess in self._process_paths:
-            if cwd is None: cwd = MODULE_PATH
-            print('RScript', './r_scripts/r_run_caf.R', os.path.join(pathiprocess, 'config_file.yaml'))
-            returned_value = subprocess.call(['RScript', './r_scripts/r_run_caf.R', 
-                                            os.path.join(pathiprocess, 'config_file.yaml')], shell= True, cwd=cwd)
-            print(returned_value)
+        
+        if cwd is None: cwd = MODULE_PATH
+        n_cycles = n_cycles or 1
+        process_completed = {}
+        for n_path, pathiprocess in enumerate(self._process_paths):
+            file_path_pertr = {}
+            for n_cycle in range(n_cycles):  
+            
+                output_path = os.path.join(pathiprocess, f'_{n_cycle}')
+            
+                print('Rscript', './r_scripts/r_run_caf.R', os.path.join(output_path, 'config_file.yaml'))
+                subprocess.call(['Rscript', 'r_scripts/r_run_caf.R', 
+                                                os.path.join(output_path, 'config_file.yaml')], cwd=cwd)    
+                
+                file_path_pertr[str(n_cycle)] = check_exp_summary_name(output_path, pathiprocess, experiment_id = n_cycle, removeworking_path_folder = False)
+            
+            process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+        
+        return process_completed
     
     def set_up_management(self, management_config: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -343,14 +381,14 @@ class PyCAF(ModelBase):
         """
         management = CAFManagement()
         
-        coffee_prun = management.coffe_prunning_schedule(**management_config.coffee_prunning)
-        tree_prun = management.tree_prunning_schedule(**management_config.tree_prunning)
-        tree_thinning = management.tree_thinning_schedule(**management_config.tree_thinning)
-        fert = management.fertilization_schedule(**management_config.fertilization)
+        coffee_prun = management.coffe_prunning_schedule(**management_config['coffee_prunning'])
+        tree_prun = management.tree_prunning_schedule(**management_config['tree_prunning'])
+        tree_thinning = management.tree_thinning_schedule(**management_config['tree_thinning'])
+        fert = management.fertilization_schedule(**management_config['fertilization'])
         
         return fert, coffee_prun, tree_prun, tree_thinning
     
-    def organize_env(self, **kwargs) -> None:
+    def organize_env(self, n_cycle = None,  **kwargs) -> None:
         """
         Organizes the environment and prepares for model execution.
 
@@ -362,17 +400,21 @@ class PyCAF(ModelBase):
         
         if len(self._process_paths) == 0: self.find_envworking_paths(file_ext='csv')
         planting_date = kwargs.get('planting_date', None)
-        doy, year = None, None
+        life_cycle_years = kwargs.get('life_cycle_years', None)
+        doy, year, end_year = None, None, None
         if planting_date:
             doy = datetime.strptime(planting_date,  '%Y-%m-%d').timetuple().tm_yday 
             year = datetime.strptime(planting_date,  '%Y-%m-%d').date().year
-            
+        if life_cycle_years and doy:
+            end_year = year + life_cycle_years
         for pathiprocess in self._process_paths:
-            print(pathiprocess)
+            tmp_path = os.path.join(pathiprocess, f'_{n_cycle}') if n_cycle is not None else pathiprocess
+            if not os.path.exists(tmp_path): os.mkdir(tmp_path)
+            print(tmp_path)
             self.set_soil_parameters(os.path.join(pathiprocess, 'cafsoil.csv'))
             self.set_location_parameters(os.path.join(pathiprocess, 'cafdem.csv'))
-            _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'), init_doy=doy, init_year=year)
-            self.write_run_config_file(pathiprocess, **kwargs)
+            _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'), init_doy=doy, init_year=year, ending_year=end_year)
+            self.write_run_config_file(tmp_path, **kwargs)
             
     def write_run_config_file(self,  output_path: str,
         planting_date: str,
@@ -380,6 +422,7 @@ class PyCAF(ModelBase):
         coffee_prun: np.ndarray,
         tree_prun: np.ndarray,
         tree_thinning: np.ndarray,
+        life_cycle_years: Optional[int] = None,
         ndays: Optional[int] = None,
         dll_path: Optional[str] = None
     ) -> None:
@@ -405,8 +448,8 @@ class PyCAF(ModelBase):
         dll_path : str, optional
             Path to the CAF model DLL file, by default None.
         """
-        config_info = self._dict_config_file(output_path, planting_date, fert, coffee_prun, 
-                                             tree_prun, tree_thinning, ndays, dll_path)
+        config_info = self._dict_config_file(output_path, planting_date = planting_date, fert= fert, coffee_prun= coffee_prun, 
+                                             tree_prun =tree_prun, tree_thinning =tree_thinning, ndays= ndays, dll_path = dll_path, life_cycle_years= life_cycle_years)
         
         config_path = os.path.join(output_path, 'config_file.yaml')
         #fn = os.path.join(self.path, 'experimental_file_config.yaml')
