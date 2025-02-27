@@ -134,8 +134,14 @@ Example 2 [(transform_datacube_to_dssat_files)](https://github.com/anaguilarar/W
 - Export processed data into tabular formats.
 
 Example 3 [(dssat_spatial_crop_simulation)](https://github.com/anaguilarar/WeatherSoilDataProcessor/blob/main/google_colab_examples/dssat_spatial_crop_simulation.ipynb):
-- Simulate crop yield potential using spatial data.
+- Simulate crop yield potential using spatial data at regional level.
 - Export results for further analysis.
+
+Example 4 [(dssat_spatial_crop_simulation_pixel)](https://github.com/anaguilarar/WeatherSoilDataProcessor/blob/main/google_colab_examples/dssat_spatial_crop_simulation_pixel.ipynb):
+- Simulate crop yield potential using spatial data at pixel revel.
+- Map potential yields at 250 m spatial resolution (SoilGrids resolution).
+- Export results for further analysis.
+
 
 
 ## References
