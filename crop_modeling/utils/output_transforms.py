@@ -3,7 +3,7 @@ import os
 import numpy as np
 from math import ceil
 from calendar import monthrange
-from datetime import datetime
+from datetime import datetime, timedelta
 from tqdm import tqdm
 import concurrent.futures
 
@@ -83,18 +83,18 @@ def add_oni_season_to_yield_data(yield_data: pd.DataFrame, group_by = 'TRNO', da
     
     historical = yield_data_summarized(data, group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
 
-    historical_nina = yield_data_summarized(data.loc[data.oni == 'La Niña'].reset_index(), 
+    historical_nina = yield_data_summarized(data.loc[data.oni == 'La Niña'].reset_index().drop(columns='level_0'), 
                                             group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
     
-    historical_nino = yield_data_summarized(data.loc[data.oni == 'El Niño'].reset_index(), 
+    historical_nino = yield_data_summarized(data.loc[data.oni == 'El Niño'].reset_index().drop(columns='level_0'), 
                                             group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
     
     historical_nina['month_day'] = historical['month_day'][:historical_nina.shape[0]]
-    historical_nina['pdat_year_month_day'] = historical['pdat_year_month_day'][:historical_nina.shape[0]]
-    historical_nina['hdat_year_month_day'] = historical['hdat_year_month_day'][:historical_nina.shape[0]]
+    historical_nina[f'{date_column.lower()}_year_month_day'] = historical[f'{date_column.lower()}_year_month_day'][:historical_nina.shape[0]]
+    historical_nina[f'{harvest_column.lower()}_year_month_day'] = historical[f'{harvest_column.lower()}_year_month_day'][:historical_nina.shape[0]]
     historical_nino['month_day'] = historical['month_day'][:historical_nino.shape[0]]
-    historical_nino['pdat_year_month_day'] = historical['pdat_year_month_day'][:historical_nino.shape[0]]
-    historical_nino['hdat_year_month_day'] = historical['hdat_year_month_day'][:historical_nino.shape[0]]
+    historical_nino[f'{date_column.lower()}_year_month_day'] = historical[f'{date_column.lower()}_year_month_day'][:historical_nino.shape[0]]
+    historical_nino[f'{harvest_column.lower()}_year_month_day'] = historical[f'{harvest_column.lower()}_year_month_day'][:historical_nino.shape[0]]
     
     historical['oni'] = 'Histórico'
     historical_nina['oni'] = 'La Niña'
@@ -138,62 +138,30 @@ def two_digit_format(value):
     return f'0{value}' if value < 10 else str(value)
 
 
-def convert_year_doy_2date(data:pd.DataFrame, date_column:str, harvest_column:str, refplanting_year:int, refharvesting_year:int, maxups:int = 1):
-    """
-    Converts year and DOY columns to full date format.
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Dataframe containing year and DOY columns.
-    date_column : str
-        Planting date column.
-    harvest_column : str
-        Harvest date column.
-    refplanting_year : int
-        Reference year for planting dates.
-    refharvesting_year : int
-        Reference year for harvesting dates.
-    
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with full date columns added.
-    """
-    pdat, hdat = [], []
-    total_adds =0 
-    for i in range(data.shape[0]):
-        doy = int(data.iloc[i][f'{date_column}doy'])
-        hdatdoy = int(data.iloc[i][f'{harvest_column}doy'])
-        if i>0 and doy < int(data.iloc[i-1][f'{date_column}doy']-200):
-            if total_adds <= maxups:
-                refplanting_year +=1
-                total_adds +=1 
-        if i>0 and hdatdoy < int(data.iloc[i-1][f'{harvest_column}doy']-200):
-            if total_adds <= maxups:
-                refharvesting_year +=1
-        pdat.append(from_doy_to_date(doy, refplanting_year))
-        hdat.append(from_doy_to_date(hdatdoy, refharvesting_year)) 
+def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column, initial_year = None):
+    init_year = initial_year or 2000
+    doy_prev = 0
+    dates = {}
+    for i in np.sort(np.unique(crop_data[group_by])):
 
-    data[f'{date_column.lower()}_year_month_day'] = pdat
-    data[f'{harvest_column.lower()}_year_month_day'] = hdat
+        subsettrno = crop_data.loc[crop_data[group_by] == i].reset_index()
+        doy = int(np.mean(subsettrno[date_column].dt.day_of_year))
+        crop_cycle_days = int(np.mean(subsettrno[harvest_column] - subsettrno[date_column]).days)
+        if doy<(doy_prev-10):
+            init_year+=1
+            print(init_year)
+        pdat = datetime.strptime(f'{init_year}-{doy}', "%Y-%j")
+        hdat = pdat + timedelta(days=crop_cycle_days)
+        dates[i] = [pdat, hdat]
+    df = pd.DataFrame(dates).T.reset_index()
+    return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day', 
+                              1: f'{harvest_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
     
-    return data
-
 def summarize_dates_bygroup(yield_data, group_by:str, date_column:str = 'PDAT', harvest_column:str = 'HDAT', refplanting_year = None, refharvesting_year = None):
-    yield_data = add_year_and_doy(yield_data,date_column)
-    if refplanting_year is None:
-        refplanting_year = yield_data.loc[yield_data[group_by] == np.unique(yield_data[group_by].values)[0]][f'{date_column}year'].values[0]
-    yield_data = add_year_and_doy(yield_data,harvest_column)
-    if refharvesting_year is None:
-        refharvesting_year = yield_data.loc[yield_data[group_by] == np.unique(yield_data[group_by].values)[0]][f'{harvest_column}year'].values[0]
-
-    datasummarised = yield_data.groupby([group_by]).aggregate({
-                        f'{harvest_column}doy': 'mean', f'{date_column}doy': 'mean'}).reset_index(
-                            ).sort_values([group_by])
     
-    datasummarised = convert_year_doy_2date(datasummarised, date_column, harvest_column, refplanting_year, refharvesting_year)
-
+    datasummarised = get_dummy_crop_cycle_dates(yield_data, group_by=group_by, 
+                                                date_column=date_column, harvest_column=harvest_column, initial_year=refplanting_year)
+    
     datasummarised['month_day'] = ['{}-{}'.format(
         two_digit_format(month),
         two_digit_format(day),
@@ -265,10 +233,11 @@ def get_weather_event(yield_data, weather, summarized_dates, group_id, group_by,
     if subset_values.shape[0]>1:
         weather_summarized = summarize_event_weather(weather, subset_values[date_column],subset_values[harvest_column], weathercol_index=weathercol_index)
         subgroudates = summarized_dates.loc[summarized_dates[group_by] == group_id]
-        pdat = subgroudates['pdat_year_month_day'].values[0]
-        hdat = subgroudates['hdat_year_month_day'].values[0]
+        pdat = subgroudates[f'{date_column.lower()}_year_month_day'].values[0]
+        
 
         event_weather = pd.DataFrame(weather_summarized.swapaxes(0,1), columns=weather.columns[weathercol_index])
+        hdat = hdat = pdat + np.timedelta64(event_weather.shape[0], 'D')
         event_weather['DATE'] = pd.date_range(start=pdat,end=hdat)[:event_weather.shape[0]]
         event_weather[group_by] = int(group_id)
         event_weather['month_day'] = subgroudates['month_day'].values[0]

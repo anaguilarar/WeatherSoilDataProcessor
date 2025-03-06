@@ -35,8 +35,12 @@ def model_selection(model: str, working_path: str):
     elif model == 'caf':
         from ..caf.base import PyCAF
         BaseClass = PyCAF
+    elif model == 'simple_model':
+        from ..simple_model.base import PySimpleModel
+        BaseClass = PySimpleModel
+        
     else:
-        raise ValueError("Unsupported model type. Choose either 'dssat' or 'caf'.")
+        raise ValueError("Unsupported model type. Choose either 'dssat', 'caf' or 'simple_model'.")
 
     class ModelClass(BaseClass):
         """

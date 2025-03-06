@@ -1,19 +1,21 @@
-import pandas as pd
 from ..utils.model_base import TableDataTransformer
 
+import pandas as pd
+
 # CAFWeather class implementation
-class CAFWeather(TableDataTransformer):
+class SMWeather(TableDataTransformer):
     @property
     def params_df_names(self):
         return {
+            "DATE": "date",
             "year": "year",
-            "doy": "doy",
-            "GR": "srad",
-            "TMIN": "tmin",
-            "TMAX": "tmax",
-            "VP": "vp",
-            "WN": "wn",
-            "RAIN": "precipitation",
+            "julian_day": "doy",
+            "srad": "srad",
+            "tmin": "tmin",
+            "tmax": "tmax",
+            "vapour_pressure": "vp",
+            "wind_speed": "wn",
+            "rain": "precipitation",
         }
 
     def process_data(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -27,7 +29,7 @@ class CAFWeather(TableDataTransformer):
             
         return df
     
-class CAFDEM(TableDataTransformer):
+class SMDEM(TableDataTransformer):
     @property
     def params_df_names(self):
         return {
@@ -41,7 +43,7 @@ class CAFDEM(TableDataTransformer):
         return df
     
 
-class CAFSoil(TableDataTransformer):
+class SMSoil(TableDataTransformer):
     @property
     def params_df_names(self):
         return {
@@ -51,7 +53,7 @@ class CAFSoil(TableDataTransformer):
             "SOC": "soc",
             "CSOM0": "som",
             "clay": "clay",
-            "silt": "silt"
+            "sand": "sand"
         }
 
     @property
@@ -59,6 +61,7 @@ class CAFSoil(TableDataTransformer):
         return {
             "clay": 0.1,
             "silt": 0.1,
+            "sand": 0.1,
             "nitrogen": 0.01,
             "bdod": 0.01,
             "cfvo": 0.01,
@@ -77,4 +80,3 @@ class CAFSoil(TableDataTransformer):
         df["som"] = df["soc"].values * (100 / 55)  # Convert SOC to SOM ## https://www.nature.com/articles/s41598-022-05476-5 som is 55 soc
         
         return df
-    
