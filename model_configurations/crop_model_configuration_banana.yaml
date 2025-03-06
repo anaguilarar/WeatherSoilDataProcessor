@@ -1,0 +1,28 @@
+GENERAL_INFO: 
+  country: 'Honduras'
+  country_code: 'HND' # crountry code
+  working_path: 'runs' # the model outputs will be located in this path
+  ncores: 0
+  model: 'simple_model'
+
+SPATIAL_INFO:
+  geospatial_path: 'data/tb_limitealdeas.shp' # spatial file that contains the region of interest
+  feature_name: 'GEOCODIGO' ## an unique code that represent each region of interest
+  aggregate_by : 'texture'
+  soil_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/soil/hnd_soilgrids_data.nc'
+  weather_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/weather/climate_1990_2024_data_wnvp_.nc'
+  dem_path: 'D:/OneDrive - CGIAR/projects/suelos_honduras/spatial_files/raster/dem_hnd/terrain_.nc'
+  scale_factor: 10 
+
+CROP:
+  name: Banana
+  cultivar: null
+  cultivar_file: 'D:/OneDrive - CGIAR/projects/suelos_honduras/simple_model_files/Cultivar.csv'
+  crop_file: 'D:/OneDrive - CGIAR/projects/suelos_honduras/simple_model_files/Species.csv'
+
+MANAGEMENT:
+  planting_date: '1990-02-01'
+  plantingWindow: 45
+  
+  
+  
