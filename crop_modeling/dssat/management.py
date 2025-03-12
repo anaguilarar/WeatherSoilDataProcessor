@@ -222,6 +222,9 @@ class Management_FileModifier(DSSATFileModifier):
         
         return newsection
     
+    def fertilizer_modifier(self):
+        pass
+    
     def automatic_management_modifier(self, **kwargs):
         ffkeys = "automatic management"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'@  AUTOMATIC MANAGEMENT', SECTION_NAMES['@  AUTOMATIC MANAGEMENT'])

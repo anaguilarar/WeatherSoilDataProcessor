@@ -82,11 +82,15 @@ def add_oni_season_to_yield_data(yield_data: pd.DataFrame, group_by = 'TRNO', da
     data['oni'] = oni_season(data[date_column])
     
     historical = yield_data_summarized(data, group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
-
-    historical_nina = yield_data_summarized(data.loc[data.oni == 'La Niña'].reset_index().drop(columns='level_0'), 
+    ninasubset = data.loc[data.oni == 'La Niña'].reset_index()
+    if 'level_0' in ninasubset.columns:
+        ninasubset = ninasubset.drop(columns='level_0')
+    historical_nina = yield_data_summarized(ninasubset, 
                                             group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
-    
-    historical_nino = yield_data_summarized(data.loc[data.oni == 'El Niño'].reset_index().drop(columns='level_0'), 
+    ninosubset = data.loc[data.oni == 'El Niño'].reset_index()
+    if 'level_0' in ninosubset.columns:
+        ninosubset = ninosubset.drop(columns='level_0')
+    historical_nino = yield_data_summarized(ninosubset, 
                                             group_by, date_column=date_column, harvest_column=harvest_column,yield_column=yield_column)
     
     historical_nina['month_day'] = historical['month_day'][:historical_nina.shape[0]]
