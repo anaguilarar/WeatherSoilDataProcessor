@@ -1,6 +1,6 @@
 affine==2.4.0
 cdsapi
-DSSATTools
+#DSSATTools
 rosetta-soil==0.1.1
 fortranformat==1.2.2
 geopandas==1.0.1

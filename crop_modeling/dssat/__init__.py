@@ -3,6 +3,6 @@ import os
 import pandas as pd
 
 try:
-    from DSSATTools.weather import Weather
+    from Py_DSSATTools.DSSATTools.weather import Weather
 except:
-    from DSSATTools.weather import Weather
+    from Py_DSSATTools.DSSATTools.weather import Weather
