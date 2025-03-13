@@ -7,6 +7,10 @@ from datetime import datetime, timedelta
 from tqdm import tqdm
 import concurrent.futures
 
+from crop_modeling.caf.output import CAFOutputData
+from crop_modeling.dssat.output import DSSATOutputData
+from crop_modeling.simple_model.output import SimpleModelOutputData
+
 monthstring = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 threemonth_dict = {
@@ -23,6 +27,129 @@ threemonth_dict = {
     'OND': [10,11,12],
     'NDJ': [11,12,1],
 }
+
+class ColumnNames():
+    """
+    check columns names for each model type
+    """
+    _weather_column = {
+            'dssat': {'date':'DATE',
+                    'tmax':'TMAX',
+                    'tmin': 'TMIN',
+                    'srad': 'SRAD',
+                    'rain':'RAIN'},
+            
+            'simple_model': {'date':'DATE',
+                    'tmax':'tmax',
+                    'tmin': 'tmin',
+                    'srad': 'srad',
+                    'rain': 'rain'},
+            
+            'caf': {'date': 'DATE',
+                    'tmax':'TMAX',
+                    'tmin': 'TMIN',
+                    'srad': 'GR',
+                    'rain':'RAIN'},
+            }
+    
+    _growth_column = {
+            'dssat': {'date':'PDAT',
+                'hdate':'HDAT',
+                'yield':'HWAH',
+                'number_of_cycle': 'TRNO'},
+            
+            'simple_model': {'date':'sowing_date',
+                'hdate':'harvesting_date',
+                'yield':'crop_yield',
+                'number_of_cycle': 'TRNO'},
+            
+            'caf': {'date': 'HDAT',
+                'yield':'harvDM_f_hay',
+                'flowering_date': 'DayFl',
+                'number_of_cycle': 'n_cycle'
+            }
+        }
+    
+    def __init__(self, model_name):
+        self.name = model_name
+        assert model_name in self.avail_models, 'check models name'
+    
+    @property
+    def avail_models(self):
+        return list(self._weather_column.keys())
+    
+    @property    
+    def weather_columns(self):        
+        return self._weather_column[self.name]
+    
+    @property
+    def growth_colnames(self):
+        return self._growth_column[self.name]
+    
+    def change_weathertomodelstyle(self, rename_to = 'dssat', rename_whichcolumns = None):
+        refcolumns = self._weather_column[rename_to]
+        rename_whichcolumns = rename_whichcolumns or list(refcolumns.keys())
+        src_columns = self.weather_columns
+        return {src_columns[v]:refcolumns[v] for v in rename_whichcolumns}
+        
+
+def update_data_using_path(path, model = 'dssat'):
+
+    model_class = {'dssat': DSSATOutputData,
+                'caf': CAFOutputData,
+                'simple_model': SimpleModelOutputData}
+    
+    assert model in list(model_class.keys()), f"please check model's name it must be {list(model_class.keys())}"
+
+    groupclasses = [
+        i for i in os.listdir(path) if os.path.isdir(os.path.join(path, i))
+    ]
+
+    return {
+        groupclasses[i]: model_class[model](os.path.join(path, groupclasses[i]))
+        for i in range(len(groupclasses))
+    }
+    
+def export_weather_by_years(weather_data, path):
+   
+    years = np.unique(weather_data["DATE"].dt.year)
+    for year in years:
+        wsubset = weather_data.loc[weather_data["DATE"].dt.year == year]
+        wsubset.to_csv(os.path.join(path, f'weather_{year}.csv'), index =False )
+       
+    with open(os.path.join(path, f'weather_years.txt'),'wb') as fn:
+        fn.write(', '.join([str(i) for i in years]).encode())
+
+
+def export_data_ascsv(processed_sims, output_data, crop, tmp_path, model_name, weather_variables2export = ['date', 'tmin', 'tmax', 'rain', 'srad'], group_by = 'texture'):
+    model_columns = ColumnNames(model_name)
+    completedgroups = [k for k,v in processed_sims.items() if v]
+    # export weather data
+    weather_data = output_data[completedgroups[0]].weather_data()
+    if model_name != 'dssat':
+        # change simple model column names
+        newcolnames = model_columns.change_weathertomodelstyle(rename_whichcolumns=weather_variables2export, rename_to='dssat')
+        weather_data = weather_data.rename(columns = newcolnames)
+        columnames = [v for v in newcolnames.values()]  
+    else:
+        columnames = [v for v in model_columns.weather_columns.values()] 
+    weather_data = weather_data[columnames]
+    weather_data.to_csv(os.path.join(tmp_path, 'weather.csv'), index =False)
+    export_weather_by_years(weather_data, tmp_path)
+    
+    # export yield data
+    date_colname, y_colname = model_columns.growth_colnames['date'], model_columns.growth_colnames['yield']
+    potentialyield_data = []
+    for gval in completedgroups:
+        dftmp = output_data[gval].output_data().sort_values(date_colname)
+        if crop != 'coffee': dftmp = dftmp.loc[dftmp[y_colname] > 0]
+        dftmp[group_by] = gval
+        potentialyield_data.append(dftmp)
+ 
+    columnames = [v for k, v in model_columns.growth_colnames.items()]
+    pd.concat(potentialyield_data)[columnames + [group_by]].to_csv(os.path.join(tmp_path, f'{crop}_potential_yield.csv'))
+    
+    
 
 def oni_season(dates: pd.DatetimeIndex) -> list:
     """
@@ -109,32 +236,6 @@ def add_oni_season_to_yield_data(yield_data: pd.DataFrame, group_by = 'TRNO', da
     return df
 
 
-def add_year_and_doy(data:pd.DataFrame, date_column:str, format:str = '%Y-%m-%d') -> pd.DataFrame:
-    """
-    Adds year and day-of-year (DOY) columns to a dataframe based on a date column.
-    
-    Parameters
-    ----------
-    data : pd.DataFrame
-        Dataframe containing date information.
-    date_column : str
-        Name of the date column.
-    format : str, optional
-        Format of the date column if not in datetime format, by default '%Y-%m-%d'.
-    
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe with year and DOY columns added.
-    """
-    
-    if not isinstance(data[date_column].values[0], np.datetime64):
-        data[date_column] = data[date_column].apply(lambda x: datetime.strptime(x, format))
-    
-    data[f'{date_column}year'] = data[date_column].dt.year
-    data[f'{date_column}doy'] = data[date_column].dt.dayofyear.astype(int)
-    return data
-
 def from_doy_to_date(doy, ref_year):
     return pd.to_datetime(f'{ref_year}-01-01') + pd.to_timedelta(doy - 1, unit='d')
 
@@ -159,7 +260,7 @@ def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column,
         dates[i] = [pdat, hdat]
     df = pd.DataFrame(dates).T.reset_index()
     return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day', 
-                              1: f'{harvest_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
+                            1: f'{harvest_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
     
 def summarize_dates_bygroup(yield_data, group_by:str, date_column:str = 'PDAT', harvest_column:str = 'HDAT', refplanting_year = None, refharvesting_year = None):
     
