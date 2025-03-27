@@ -43,7 +43,7 @@ CGIAR
 
 *FERTILIZERS (INORGANIC)
 @F FDATE  FMCD  FACD  FDEP  FAMN  FAMP  FAMK  FAMC  FAMO  FOCD FERNAME
- 1 86269 FE006   -99     4   -99   -99   -99   -99   -99   -99 No fertilizer
+ 1 86269 FE006   -99     4   -99   -99   -99   -99   -99   -99 Nofertilizer
 
 
 *HARVEST DETAILS

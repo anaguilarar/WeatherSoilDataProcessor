@@ -51,6 +51,9 @@
 @P PDATE EDATE  PPOP  PPOE  PLME  PLDS  PLRS  PLRD  PLDP  PLWT  PAGE  PENV  PLPH  SPRL                        PLNAME
  1 83151   -99     1     1     V     R   100    90    20   450   -99   -99   1.5    25                        1-Jun
 
+*FERTILIZERS (INORGANIC)
+@F FDATE  FMCD  FACD  FDEP  FAMN  FAMP  FAMK  FAMC  FAMO  FOCD FERNAME
+ 1 86269 FE006   -99     4   -99   -99   -99   -99   -99   -99 Nofertilizer
 
 *HARVEST DETAILS
 @H HDATE  HSTG  HCOM HSIZE   HPC  HBPC HNAME

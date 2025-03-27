@@ -1,21 +1,21 @@
-from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
+import os
 import glob
 import subprocess
+from datetime import datetime, timedelta
+from typing import Dict, Tuple
+
+import numpy as np
+import pandas as pd
 import yaml
+from dateutil.relativedelta import relativedelta
+from omegaconf import OmegaConf
 
 from .soil import DSSATSoil_base
 from .weather import DSSAT_Weather
-from .files_reading import DSSATFileModifier, remove_header_lines, flat_list_of_list
-from omegaconf import OmegaConf
-from typing import Dict, Tuple
-
-import os
-import pandas as pd
-
-import numpy as np
-
+from .files_reading import (DSSATFileModifier, remove_header_lines, 
+                           flat_list_of_list)
 from DSSATTools.base.sections import SECTIONS_HEADER_FMT, SECTIONS_ROW_FMT
+from DSSATTools.crop import CROPS_MODULES
 
 SECTIONS_ROW_FMT['field'][0] = '1X,I1,1X,A8,1X,A8,1X,A5,1X,I5,1X,A5,2(1X,I5),1X,A5,1X,A4,1X,I5,2X,A9,A36'
 
@@ -25,24 +25,30 @@ SECTION_NAMES = {
     'FIELDS': '@L',
     'INITIAL CONDITIONS': '@C',
     'PLANTING DETAILS': '@P',
+    'FERTILIZERS (INORGANIC)': '@F',
     'HARVEST DETAILS': '@H',
     'SIMULATION CONTROLS': '@N',
     '@  AUTOMATIC MANAGEMENT': '@N'
 }
 
 
-
-
-
 class Management_FileModifier(DSSATFileModifier):
+    """A class to modify DSSAT management files with various planting and treatment options.
+    
+    Parameters
+    ----------
+    planting_date : str
+        Planting date in 'YYYY-MM-DD' format.
+    harvesting_date : str
+        Harvesting date in 'YYYY-MM-DD' format.
+    n_planting_windows : int, optional
+        Number of planting windows to consider (default is 1).
+    path : str, optional
+        Path to the DSSAT file to modify (default is None).
+    """
     
     def __init__(self, planting_date: str, harvesting_date: str, n_planting_windows: int = None, path: str = None,):
-        """
-                planting_date : str
-            Planting date in 'YYYY-MM-DD' format.
-        harvesting_date : str
-            Harvesting date in 'YYYY-MM-DD' format.
-        """
+        
         self.n_windows = n_planting_windows if n_planting_windows else 1
         super().__init__(path, SECTION_NAMES)
 
@@ -62,6 +68,26 @@ class Management_FileModifier(DSSATFileModifier):
         self._section_idx = section_idx
     
     def _extract_section_info_base(self,section_ffname, section_name, sub_section_pattern):
+        """Extract base information from a section for modification.
+        
+        Parameters
+        ----------
+        section_ffname : str or list of str
+            Section name(s) in the fixed format.
+        section_name : str
+            Name of the section to extract.
+        sub_section_pattern : str
+            Pattern to identify subsections.
+            
+        Returns
+        -------
+        tuple
+            Contains:
+            - dflist: List of DataFrames with section data
+            - headerff_style: List of header formats
+            - rowff_style: List of row formats
+        """
+        
         header_ffstyle = [SECTIONS_HEADER_FMT[secname] for secname in section_ffname
                         ] if isinstance(section_ffname, list) else SECTIONS_HEADER_FMT[section_ffname]
         row_ffstyle = [SECTIONS_ROW_FMT[secname] for secname in section_ffname
@@ -73,11 +99,22 @@ class Management_FileModifier(DSSATFileModifier):
 
     
     def treatment_modifier(self, **kwargs):
+        """Modify the treatments section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - fertilizer: str, whether fertilizer is applied ('R' for yes)
+            
+        Returns
+        -------
+        list of str
+            Modified lines for the treatments section.
+        """
         ffkeys = "treatments"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*TREATMENTS', SECTION_NAMES['TREATMENTS'])
-        
-        dflist[0]['TNAME....................'] = kwargs.get('tname', 'initial_planting')
-
+        thereisferti = kwargs.get('fertilizer', False) == 'R'
         newsection = []
         for i in range(self.n_windows):
             tmpdf = dflist[0].copy()
@@ -86,11 +123,17 @@ class Management_FileModifier(DSSATFileModifier):
             tmpdf.loc[:,'MH'] = i+1
             tmpdf.loc[:,'SM'] = i+1
             tmpdf.loc[:,'@N'] = i+1
+            if thereisferti:
+                tmpdf.loc[:,'MF'] = i+1
+            else:
+                tmpdf.loc[:,'MF'] = 0
             if i>0:
                 tmpdf.loc[:,'TNAME....................'] = f"planting+{i}week" if i==1 else f"planting+{i}weeks"
             if i>=9:
                 rowff_style = '4(1X,I1),1X,A25,3(2X,I1),2(1X,I2),6(2X,I1),2(1X,I2)'
-                rowff_style = '4(1X,I1),1X,A25,3(2X,I1),2(1X,I2),6(2X,I1),2(1X,I2)'
+                if thereisferti: 
+                    rowff_style = '4(1X,I1),1X,A25,3(2X,I1),2(1X,I2),2X,I1,1X,I2,4(2X,I1),2(1X,I2)'
+
             dssatlines = self.write_df_asff(tmpdf, headerff_style, rowff_style)
             if i>=9: 
                 dssatlines[-1] = str(i+1) + dssatlines[-1][2:]
@@ -102,6 +145,21 @@ class Management_FileModifier(DSSATFileModifier):
         return newlines
     
     def cultivar_modifier(self, **kwargs):
+        """Modify the cultivars section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - crop: str, crop code
+            - cname: str, cultivar name
+            - variety_id: int, variety identifier
+            
+        Returns
+        -------
+        list of str
+            Modified lines for the cultivars section.
+        """
         dflist = self.extract_section_asdf(self.file_path, '*CULTIVARS', SECTION_NAMES['CULTIVARS'])
         crop = kwargs.get('crop',None)
         cname = kwargs.get('cname',None)
@@ -115,6 +173,23 @@ class Management_FileModifier(DSSATFileModifier):
         return newlines
         
     def fields_modifier(self, **kwargs):
+        """Modify the fields section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - weather_stname: str, weather station name
+            - soil_id: str, soil identifier
+            - elevation: float, elevation in meters
+            - long: float, longitude
+            - lat: float, latitude
+            
+        Returns
+        -------
+        list of str
+            Modified lines for the fields section.
+        """
         ffkeys = "field"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*FIELDS', SECTION_NAMES['FIELDS'])
         weather_station_name = kwargs.get('weather_stname',None) 
@@ -135,6 +210,23 @@ class Management_FileModifier(DSSATFileModifier):
         return newlines
     
     def initial_conditions_modifier(self, **kwargs):
+        """Modify the initial conditions section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - slb: list, soil layer depths
+            - slll: list, lower limit of soil water
+            - sdul: list, drained upper limit
+            - ind_soil_water: int, soil water indicator
+            - crop: str, crop code
+            
+        Returns
+        -------
+        list of str
+            Modified lines for the initial conditions section.
+        """
         ffkeys = ["initial conditions","initial conditions_table"]
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*INITIAL CONDITIONS', SECTION_NAMES['INITIAL CONDITIONS'])
         
@@ -168,7 +260,14 @@ class Management_FileModifier(DSSATFileModifier):
         newlines = [self.lines[self._section_idx['INITIAL CONDITIONS']]] + flat_list_of_list(flat_list_of_list(newsection))
         return newlines
     
-    def planting_modifier(self, **kwargs):
+    def planting_modifier(self):
+        """Modify the planting details section of the DSSAT file.
+        
+        Returns
+        -------
+        list of str
+            Modified lines for the planting details section.
+        """
         ffkeys = "planting details"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*PLANTING DETAILS', SECTION_NAMES['PLANTING DETAILS'])
         newsection = []
@@ -184,7 +283,14 @@ class Management_FileModifier(DSSATFileModifier):
         newlines = [self.lines[self._section_idx['PLANTING DETAILS']]] +  remove_header_lines(newsection)
         return newlines
     
-    def harvesting_modifier(self, **kwargs):
+    def harvesting_modifier(self):
+        """Modify the harvest details section of the DSSAT file.
+        
+        Returns
+        -------
+        list of str
+            Modified lines for the harvest details section.
+        """
         ffkeys = "harvest details"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*HARVEST DETAILS', SECTION_NAMES['HARVEST DETAILS'])
         newsection = []
@@ -200,32 +306,159 @@ class Management_FileModifier(DSSATFileModifier):
         return newlines
         
     def simulation_control_modifier(self, **kwargs):
+        """Modify the simulation controls section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - sname: str, simulation name
+            - nyears: int, number of years
+            - fertilizer: str, fertilizer type
+            
+        Returns
+        -------
+        list of list of str
+            Modified lines for the simulation controls section.
+        """
         ffkeys = "simulation controls"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*SIMULATION CONTROLS', SECTION_NAMES['SIMULATION CONTROLS'])
         
         simul_name = kwargs.get('sname','Default')
         nyears = kwargs.get('nyears',1)
-        
+        ferttype = kwargs.get('fertilizer','N')
+        smodel = -99#kwargs.get('simulation_cropmodel', -99)
+        crop = kwargs.get('crop',None)
         newsection = []
         for i in range(self.n_windows):
             simulation_list = []
             orig_df = dflist.copy()
             for j in range(len(orig_df)): orig_df[j].loc[:,'@N'] = i+1
             orig_df[0].loc[:,'SDATE'] = ((self.starting_date + timedelta(days=(7*(i)))).strftime('%y%j'))
+            #orig_df[0].loc[:,'RSEED'] = 2409
             orig_df[0].loc[:,'NYERS'] = nyears
             orig_df[0].loc[:,'SNAME....................'] = simul_name
+            if smodel != -99:
+                orig_df[0].loc[:,'SMODEL'] = -99
+            orig_df[1].loc[:,'SYMBI'] = 'Y'
+            if crop is not None and crop.lower() != 'cassava':
+                #if ferttype == 'R': orig_df[1].loc[:,'NITRO'] = 'Y'
+                orig_df[1].loc[:,'NITRO'] = 'Y'
+            orig_df[2].loc[:,'PHOTO'] = 'C' 
+            orig_df[2].loc[:,'NSWIT'] = '1'
+            orig_df[2].loc[:,'MESOM'] = 'G'
+            orig_df[2].loc[:,'MESEV'] = 'S'
+            orig_df[3].loc[:,'RESID'] = 'N'
+            orig_df[3].loc[:,'FERTI'] = ferttype
             for j in range(len(headerff_style)):
-                dssatlines = self.write_df_asff(dflist[j], headerff_style[j], rowff_style[j])
+                dssatlines = self.write_df_asff(orig_df[j], headerff_style[j], rowff_style[j])
                 if i>=9: dssatlines[-1] = str(i+1) + dssatlines[-1][2:]
                 simulation_list.append(dssatlines)
             newsection.append(simulation_list)
         
         return newsection
     
-    def fertilizer_modifier(self):
-        pass
+    def fertilizer_pertreatment(self, **kwargs):
+        """Modify fertilizer application per treatment.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - fertilizer_dates_after_planting: list, days after planting for applications
+            - fertilizer_npk: list, NPK values for each application
+            
+        Returns
+        -------
+        list of list of str or None
+            Modified fertilizer lines or None if no applications specified.
+        """
+
+        daysafterplanting = kwargs.get('fertilizer_dates_after_planting', None)
+        npk_values = kwargs.get('fertilizer_npk', None)
+        if daysafterplanting is None: return None
+        assert len(daysafterplanting) == len(npk_values), "fertlizer and dates must have same length"
+        ferti_lines = []
+        for i in range(self.n_windows):
+            pdate = (self.planting_date + timedelta(days=(7*(i))))
+            trt_schedule = {'date':[],'npk':[]}
+            for dap,npk in zip(daysafterplanting, npk_values):
+                trt_schedule['date'].append(pdate + timedelta(days=dap))
+                trt_schedule['npk'].append(npk)
+            ferti_line = self.fertilizer_modifier(i+1, fertilizer_schedule = trt_schedule)
+            if i > 0:
+                ferti_lines.append(ferti_line[2:])
+            else:
+                ferti_lines.append(ferti_line)
+        return ferti_lines
+    
+    def fertilizer_modifier(self, fid, fertilizer_schedule, fname = -99):
+        """Modify fertilizer application per treatment.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - fertilizer_dates_after_planting: list, days after planting for applications
+            - fertilizer_npk: list, NPK values for each application
+            
+        Returns
+        -------
+        list of list of str or None
+            Modified fertilizer lines or None if no applications specified.
+        """
+        def table_mod(df, fid, fdate, nval, pval, kval, fname):
+            df.loc[:, '@F'] = fid
+            df.loc[:, 'FMCD'] = 'FE001'
+            df.loc[:, 'FACD'] = 'AP001'
+            df.loc[:, 'FDATE'] = '00001' if fdate is None else fdate.strftime('%y%j')
+            df.loc[:, 'FAMN'] = 0 if nval == -99 else nval
+            df.loc[:, 'FAMP'] = 0 if pval == -99 else pval
+            df.loc[:, 'FAMK'] = 0 if kval == -99 else kval
+            df.loc[:, 'FAMC'] = 0
+            df.loc[:, 'FAMO'] = 0
+            df.loc[:, 'FERNAME'] = fname
+            return df
+        
+        ffkeys = "fertilizers_table"
+        dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys, '*FERTILIZERS (INORGANIC)', SECTION_NAMES['FERTILIZERS (INORGANIC)'])
+
+        newsection = []
+        orig_df = dflist[0].copy()
+        if fertilizer_schedule is not None:
+            n_applications = len(list(fertilizer_schedule.values())[0])
+            
+            for i in range(n_applications):
+                fdate = fertilizer_schedule['date'][i]
+                fdate = datetime.strptime(fdate, '%Y-%m-%d') if isinstance(fdate, str) else fdate
+                npkvalue = fertilizer_schedule['npk'][i]
+                orig_df = table_mod(orig_df, fid, fdate, *npkvalue, fname)
+                #if check_fertilizer_date(fdate, dssatm.planting_date): continue
+                dssatlines = self.write_df_asff(orig_df, headerff_style, rowff_style)
+                if fid>9: dssatlines[-1] = str(fid) + dssatlines[-1][2:]
+                newsection.append(dssatlines)
+        else:
+            orig_df = table_mod(orig_df, 1, None, *[0,0,0], fname)
+            dssatlines = self.write_df_asff(orig_df, headerff_style, rowff_style)
+            newsection.append(dssatlines)
+        
+        newlines =[self.lines[self._section_idx['FERTILIZERS (INORGANIC)']]] +  remove_header_lines(newsection)
+        return newlines
     
     def automatic_management_modifier(self, **kwargs):
+        """Modify the automatic management section of the DSSAT file.
+        
+        Parameters
+        ----------
+        **kwargs : dict
+            Optional arguments including:
+            - hrfst: int, harvest first parameter
+            
+        Returns
+        -------
+        list of list of str
+            Modified lines for the automatic management section.
+        """
         ffkeys = "automatic management"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'@  AUTOMATIC MANAGEMENT', SECTION_NAMES['@  AUTOMATIC MANAGEMENT'])
         
@@ -235,9 +468,15 @@ class Management_FileModifier(DSSATFileModifier):
             orig_df = dflist.copy()
             for j in range(len(orig_df)):
                 orig_df[j].loc[:,'@N'] = i+1
-            orig_df[0].loc[:,'PFRST'] = (self.starting_date.strftime('%y')) + '001'
-            orig_df[0].loc[:,'PLAST'] = (self.starting_date.strftime('%y')) + '001'
+            orig_df[0].loc[:,'PFRST'] = ((self.planting_date + timedelta(days=(7*(i))) - timedelta(days=3)).strftime('%y%j'))
+            orig_df[0].loc[:,'PLAST'] = ((self.planting_date + timedelta(days=(7*(i))) + timedelta(days=3)).strftime('%y%j'))
+            orig_df[0].loc[:,'PSTMX'] = 40
+            orig_df[0].loc[:,'PSTMN'] = 40
+            orig_df[3].loc[:,'RIPCN'] = 100
+            orig_df[3].loc[:,'RTIME'] = 1
+            orig_df[3].loc[:,'RIDEP'] = 20
             orig_df[-1].loc[:,'HFRST'] = kwargs.get('hrfst',-99)
+            orig_df[-1].loc[:,'HLAST'] = -99
             for j in range(len(headerff_style)):
                 dssatlines = self.write_df_asff(dflist[j], headerff_style[j], rowff_style[j])
                 if i>=9: dssatlines[-1] = str(i+1) + dssatlines[-1][2:]
@@ -377,7 +616,7 @@ class DSSATManagement_base(Management_FileModifier):
         self.output_name = kwargs.get('output_name', 'EXPS')
         self.roi_id = kwargs.get('roi_id', 1)
         self.n_windows = kwargs.get('plantingWindow',1)
-        self.fertilizer = kwargs.get('fertilizer',False) # TODO: implement true scenario
+        self.fertilizer = kwargs.get('fertilizer_schedule',None)
         self.index_soilwat = kwargs.get('index_soilwat',1)
         self._long = kwargs.get('long',None)
         self._lat = kwargs.get('lat',None)
@@ -416,7 +655,7 @@ class DSSATManagement_base(Management_FileModifier):
 
         return weather_fn
     
-    def create_file(self, filex_template: str, path: str, **kwargs) -> None:
+    def create_file(self, filex_template: str = None, path: str = 'tmp', **kwargs) -> None:
         """
         Creates an experimental file using R-DSSAT tools.
         To implement this function it is neccesary to previosly setup RScript in terminal
@@ -430,12 +669,14 @@ class DSSATManagement_base(Management_FileModifier):
         **kwargs : dict
             Additional configuration options.
         """
-        self.path = path        
-        config_path = self._write_configuration_file(filex_template, **kwargs)
-        self.file_path = filex_template
-        if self.file_path:
-            self.lines = self.open_file(self.file_path)
-            
+        self.path = path 
+        if filex_template is not None:
+            self.file_path = filex_template
+            if self.file_path:
+                self.lines = self.open_file(self.file_path)
+                
+        config_path = self._write_configuration_file(self.file_path, **kwargs)
+
         config_management = OmegaConf.load(config_path)
         
         sdul = np.array(config_management.SOIL.SDUL)
@@ -445,18 +686,30 @@ class DSSATManagement_base(Management_FileModifier):
         #path = config.MANAGEMENT.template
         nyears = config_management.GENERAL.number_years 
         
-        trlines = self.treatment_modifier()
+        #Cultivar options
         cullines = self.cultivar_modifier(crop = self.crop_code, variety_id = self.variety)
+        #Field data
         fllines = self.fields_modifier(weather_stname = config_management.WEATHER.file_name,
                     soil_id = config_management.SOIL.ID_SOIL,
                     long = config_management.SOIL.long, lat = config_management.SOIL.lat)
+        #Initial conditions ## soil info
         initlines = self.initial_conditions_modifier(sdul = sdul, slb = slb, slll = slll, ind_soil_water = ind_soil_water, 
-                                                     crop = self.crop_code)
+                                                    crop = self.crop_code)
+        #planting dates
         pllines = self.planting_modifier()
-        hrlines = self.harvesting_modifier()
-        
-        simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears)
+        #harvesting dates
+        hrlines = self.harvesting_modifier() ## TODO: harvest can be optional
+        # fertilizer
+        fertilizer_listlines = self.fertilizer_pertreatment(**config_management.MANAGEMENT)
+        ferti = 'N' if fertilizer_listlines is None else 'R'
+        # treatment
+        trlines = self.treatment_modifier(fertilizer = ferti)
+        # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
+        simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears, fertilizer = ferti, crop = self.crop,
+                                                        simulation_cropmodel = config_management.MANAGEMENT.get('simulation_cropmodel', -99))
+        # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         autman_listlines = self.automatic_management_modifier()
+        
         
         # both simulation and automatic management are combined for the output
         listsimulationout = []
@@ -466,8 +719,11 @@ class DSSATManagement_base(Management_FileModifier):
                                                         ] + flat_list_of_list(autman_listlines[i]))
         siumautolines = [self.lines[self._section_idx['SIMULATION CONTROLS']]] + flat_list_of_list(listsimulationout)
         
-        
-        allsections = [trlines, cullines, fllines, initlines, pllines, hrlines, siumautolines]
+        if fertilizer_listlines is not None:
+            allsections = [trlines, cullines, fllines, initlines, pllines, flat_list_of_list(fertilizer_listlines), hrlines, siumautolines]    
+        else:
+            allsections = [trlines, cullines, fllines, initlines, pllines, hrlines, siumautolines]
+            
         fnman = os.path.join(os.path.dirname(config_path), f'{config_management.GENERAL.output_name}0001.{self.crop_code}X')
         
         with open(fnman, 'w') as fn:
@@ -521,7 +777,9 @@ class DSSATManagement_base(Management_FileModifier):
                 'startingDate': self.starting_date.strftime('%Y-%m-%d'), ## one month before of actual date
                 'plantingDate': self.planting_date.strftime('%Y-%m-%d'),
                 'harvestDate':  self.harvesting_date.strftime('%Y-%m-%d'),
-                'fertilizer': self.fertilizer
+                'fertilizer_dates_after_planting': np.array(self.fertilizer['days_after_planting']).tolist() if self.fertilizer['days_after_planting'] is not None else None,
+                'fertilizer_npk': np.array(self.fertilizer['npk']).tolist() if self.fertilizer['npk'] is not None else None,
+                'simulation_cropmodel': CROPS_MODULES[self.crop.title()]
             },
             'SOIL':{
                 'source': 'ISRIC V2',
@@ -538,6 +796,23 @@ class DSSATManagement_base(Management_FileModifier):
             }
             
         }
+    
+    def _check_fertlizers_length(self):
+        'fertilizer must contain values for nitrogen phosphorus and potasium, thereby it must be a list of 3 length'
+        if self.fertilizer is None:
+            self.fertilizer = {'days_after_planting': None, 'npk': None}
+        if self.fertilizer['npk'] is None: return None
+        listfert = []
+        for i in range(len(self.fertilizer['npk'])):
+            if len(self.fertilizer['npk'][i]) < 3:
+                tmplist = [0] * 3
+                tmplist[:len(self.fertilizer['npk'][i])] = self.fertilizer['npk'][i]
+            elif len(self.fertilizer['npk'][i]) > 3:
+                tmplist = self.fertilizer['npk'][i][:3]
+            else:
+                tmplist = self.fertilizer['npk'][i]
+            listfert.append(tuple(tmplist))
+        self.fertilizer['npk'] = listfert
         
     def _write_configuration_file(self, filex_template, **kwargs):
         try:
@@ -551,33 +826,14 @@ class DSSATManagement_base(Management_FileModifier):
         soilid, soildata = self.soil_data()
         self.general_info(**kwargs)
         weather_fn = self.check_weather_fn()
+        self._check_fertlizers_length()
+            
         config_info = self.management_configuration_file(filex_template, number_years, soilid, soildata, weather_fn)
         
         config_path = os.path.join(self.path, 'experimental_file_config.yaml')
-        #fn = os.path.join(self.path, 'experimental_file_config.yaml')
+
         with open(config_path, 'w') as file:
             yaml.dump(config_info, file)
             
         print(f"Configuration file written: {config_path}")
         return config_path
-        
-    
-    def create_file_using_rdssat(self, filex_template: str, path: str, **kwargs) -> None:
-        """
-        Creates an experimental file using R-DSSAT tools.
-        To implement this function it is neccesary to previosly setup RScript in terminal
-        besides the working path must contains the SOIL and WEATHER dssat files
-        Parameters
-        ----------
-        filex_template : str
-            Path to the experiment template file.
-        path : str
-            Path to the working directory.
-        **kwargs : dict
-            Additional configuration options.
-        """
-        self.path = path        
-        config_path = self._write_configuration_file(filex_template, **kwargs)
-        
-        returned_value = subprocess.call(['RScript', './r_scripts/r_create_experimental_files.R', f'{config_path}'] , shell= True)
-        return returned_value
