@@ -655,7 +655,7 @@ class DSSATManagement_base(Management_FileModifier):
 
         return weather_fn
     
-    def create_file(self, filex_template: str = None, path: str = 'tmp', **kwargs) -> None:
+    def create_file(self, filex_template: str = None, path: str = 'tmp', verbose = True, **kwargs) -> None:
         """
         Creates an experimental file using R-DSSAT tools.
         To implement this function it is neccesary to previosly setup RScript in terminal
@@ -676,9 +676,10 @@ class DSSATManagement_base(Management_FileModifier):
                 self.lines = self.open_file(self.file_path)
                 
         config_path = self._write_configuration_file(self.file_path, **kwargs)
-
+        if verbose:
+            print(f"Configuration file written: {config_path}")
+            
         config_management = OmegaConf.load(config_path)
-        
         sdul = np.array(config_management.SOIL.SDUL)
         slll = np.array(config_management.SOIL.SLLL)
         slb = config_management.SOIL.SLB
@@ -827,13 +828,12 @@ class DSSATManagement_base(Management_FileModifier):
         self.general_info(**kwargs)
         weather_fn = self.check_weather_fn()
         self._check_fertlizers_length()
-            
+        
         config_info = self.management_configuration_file(filex_template, number_years, soilid, soildata, weather_fn)
         
         config_path = os.path.join(self.path, 'experimental_file_config.yaml')
 
         with open(config_path, 'w') as file:
             yaml.dump(config_info, file)
-            
-        print(f"Configuration file written: {config_path}")
+        
         return config_path

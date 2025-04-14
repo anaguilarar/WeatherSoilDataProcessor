@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from tqdm import tqdm
 import concurrent.futures
 
-from crop_modeling.caf.output import CAFOutputData
-from crop_modeling.dssat.output import DSSATOutputData
-from crop_modeling.simple_model.output import SimpleModelOutputData
+from ..caf.output import CAFOutputData
+from ..dssat.output import DSSATOutputData
+from ..simple_model.output import SimpleModelOutputData
 
 monthstring = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
@@ -69,6 +69,11 @@ class ColumnNames():
                 'number_of_cycle': 'n_cycle'
             }
         }
+    
+    _nitrogen_uptake = {
+        'dssat': {'nitrogen_uptake': 'NUCM',
+                  'nitrogen_applied': 'NICM'}
+    }
     
     def __init__(self, model_name):
         self.name = model_name

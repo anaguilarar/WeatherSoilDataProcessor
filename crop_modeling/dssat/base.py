@@ -159,7 +159,8 @@ class DSSATBase(ModelBase):
         roi_id: int = 1,
         plantingWindow: Optional[int] = None,
         index_soilwat: int = 1,
-        fertilizer_schedule = None
+        fertilizer_schedule:Optional[List] = None,
+        verbose: bool = True,
         ) -> None:
         """
         Set up the management configuration and create DSSAT experiment files.
@@ -180,10 +181,12 @@ class DSSATBase(ModelBase):
             Region of interest ID.
         plantingWindow : int, optional
             Planting window in days.
-        fertilizer : bool, optional
-            Whether to include fertilizer in the configuration.
-        index_soilwat : int, default=1
+        fertilizer_schedule : List, optional
+            Whether to include fertilizer in the configuration. 
+        index_soilwat: int, default=1
             Soil water index for the experiment.
+        verbose: bool, default True
+            Print where the configuration files were saved
         """
         #if len(self._process_paths) == 0: self.find_envworking_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
@@ -199,14 +202,15 @@ class DSSATBase(ModelBase):
             
             output = dssatm.create_file(template, pathiprocess, roi_id = roi_id,plantingWindow = plantingWindow,
                     index_soilwat = index_soilwat, fertilizer_schedule =fertilizer_schedule,
-                    long = long, lat = lat)
+                    long = long, lat = lat, verbose = verbose)
             self.crop_code = dssatm.crop_code
             if output is None:
                 continue
             experiment_config = OmegaConf.load(os.path.join(pathiprocess, 'experimental_file_config.yaml'))
             
             management_pathfile = glob.glob(pathiprocess+'/*.{}*'.format(experiment_config.MANAGEMENT.crop_code))
-            print(f'experimental file created: {management_pathfile}')
+            if verbose:
+                print(f'experimental file created: {management_pathfile}')
             
             check_soil_id(management_pathfile[0], experiment_config.SOIL.ID_SOIL )
             
@@ -231,7 +235,10 @@ class DSSATBase(ModelBase):
         for pathtiprocess in self._process_paths:
             crop_manager.write(pathtiprocess)
     
-    def run(self, crop_code, crop, planting_window, bin_path = None, parallel_tr= True, ncores = 10, remove_tmp_folder = False, dssat_path:str = None, sim_experiment_path = None) -> None:
+    def run(self, crop_code, crop, planting_window, bin_path = None, 
+            parallel_tr= True, ncores = 10, 
+            remove_tmp_folder = False, dssat_path:str = None, 
+            sim_experiment_path:str = None, verbose:bool = True) -> None:
         
         """
         Run DSSAT simulations for all processing paths.
@@ -252,6 +259,8 @@ class DSSATBase(ModelBase):
             Whether to remove temporary folders after simulations.
         dssat_path: str, optional
             Path to DSSAT folder.
+        verbose: bool, default=True
+            progression bar for each simulation
 
         Returns
         -------
@@ -259,8 +268,9 @@ class DSSATBase(ModelBase):
             Dictionary with processing path names as keys and success status as values.
         """
         process_completed = {}
-        if parallel_tr:
-            for pathiprocess in tqdm(self._process_paths):
+        rangedata = tqdm(self._process_paths) if verbose else self._process_paths
+        if parallel_tr: 
+            for pathiprocess in rangedata:
                 if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
                         print(f'soil file not found in :{pathiprocess}')
                         process_completed[os.path.basename(pathiprocess)] = False 
@@ -288,7 +298,7 @@ class DSSATBase(ModelBase):
             
         else:
             
-            for pathiprocess in self._process_paths:
+            for pathiprocess in rangedata:
                 if not os.path.exists(os.path.join(pathiprocess, 'TR.SOL')): 
                             print(f'soil file not found in :{pathiprocess}')
                             process_completed[os.path.basename(pathiprocess)] = False 
@@ -318,7 +328,7 @@ class DSSATBase(ModelBase):
             country = None,
             site = None,
             sub_working_path = None,
-            verbose = True
+            verbose: bool = True
         ) -> pd.DataFrame:
         """
         Converts data from a datacube to DSSAT-compatible files.
