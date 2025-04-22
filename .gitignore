@@ -8,6 +8,7 @@ Py_DSSATTools/
 runs/
 modeladocultivo.py
 test.ipynb
+fertilizer_list.csv
 spatialdata/__pycache__/climate_data.cpython-39.pyc
 spatialdata/__pycache__/data_cube_utils.cpython-39.pyc
 spatialdata/__pycache__/datacube.cpython-39.pyc
