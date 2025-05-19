@@ -128,7 +128,7 @@ def run_experiment_dssat(path, experimentid,crop_code, crop,bin_path = None, dss
 
 def run_experiment_dssat_bin(path, experimentid,crop_code, crop, remove_folder = False, sim_experiment_path = None):
     from DSSATTools.run import CRD_PATH, SLD_PATH, DSSAT_HOME, BIN_PATH, STD_PATH
-    print(BIN_PATH)
+    
     sim_experiment_path = sim_experiment_path or os.path.join(path, f'_{experimentid}')
     
     run_dssat_simulation(experimentid, path, crop_code, crop, DSSAT_HOME, BIN_PATH, CRD_PATH,
