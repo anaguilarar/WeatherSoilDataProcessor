@@ -381,6 +381,6 @@ class FertilizerBayesian(SpatialCM):
                         future.result()
                         pbar.update(1)
         else:
-            for tp in rangedata:
+            for tp in tqdm(range(time_windows)):
                 self.simulate_time_point(tp, start_from, harvesting_date, n_iter = n_iter, date_format=date_format)
             
