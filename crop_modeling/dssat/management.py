@@ -47,13 +47,13 @@ class Management_FileModifier(DSSATFileModifier):
         Path to the DSSAT file to modify (default is None).
     """
     
-    def __init__(self, planting_date: str, harvesting_date: str, n_planting_windows: int = None, path: str = None,):
+    def __init__(self, planting_date: str, harvesting_date: str = None, n_planting_windows: int = None, path: str = None,):
         
         self.n_windows = n_planting_windows if n_planting_windows else 1
         super().__init__(path, SECTION_NAMES)
 
         self.planting_date = datetime.strptime(planting_date,  '%Y-%m-%d')
-        self.harvesting_date = datetime.strptime(harvesting_date,  '%Y-%m-%d')
+        self.harvesting_date = datetime.strptime(harvesting_date,  '%Y-%m-%d') if harvesting_date else None
         self.starting_date = self.planting_date - relativedelta(months=1)
         self._section_indices_list()
     
@@ -115,18 +115,18 @@ class Management_FileModifier(DSSATFileModifier):
         ffkeys = "treatments"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*TREATMENTS', SECTION_NAMES['TREATMENTS'])
         thereisferti = kwargs.get('fertilizer', False) == 'R'
+        thereisharvest = kwargs.get('harvest', True)
+        
         newsection = []
         for i in range(self.n_windows):
             tmpdf = dflist[0].copy()
             tmpdf.loc[:,'IC'] = i+1
             tmpdf.loc[:,'MP'] = i+1
-            tmpdf.loc[:,'MH'] = i+1
+            tmpdf.loc[:,'MH'] = i+1 if thereisharvest else 0
             tmpdf.loc[:,'SM'] = i+1
             tmpdf.loc[:,'@N'] = i+1
-            if thereisferti:
-                tmpdf.loc[:,'MF'] = i+1
-            else:
-                tmpdf.loc[:,'MF'] = 0
+            tmpdf.loc[:,'MF'] = i+1 if thereisferti else 0
+                
             if i>0:
                 tmpdf.loc[:,'TNAME....................'] = f"planting+{i}week" if i==1 else f"planting+{i}weeks"
             if i>=9:
@@ -293,6 +293,7 @@ class Management_FileModifier(DSSATFileModifier):
         """
         ffkeys = "harvest details"
         dflist,headerff_style, rowff_style = self._extract_section_info_base(ffkeys,'*HARVEST DETAILS', SECTION_NAMES['HARVEST DETAILS'])
+        if self.harvesting_date is None: return None
         newsection = []
         for i in range(self.n_windows):
             orig_df = dflist[0].copy()
@@ -327,6 +328,7 @@ class Management_FileModifier(DSSATFileModifier):
         simul_name = kwargs.get('sname','Default')
         nyears = kwargs.get('nyears',1)
         ferttype = kwargs.get('fertilizer','N')
+        hrtype = 'R' if kwargs.get('harvest',True) else 'M'
         smodel = -99#kwargs.get('simulation_cropmodel', -99)
         crop = kwargs.get('crop',None)
         newsection = []
@@ -350,6 +352,7 @@ class Management_FileModifier(DSSATFileModifier):
             orig_df[2].loc[:,'MESEV'] = 'S'
             orig_df[3].loc[:,'RESID'] = 'N'
             orig_df[3].loc[:,'FERTI'] = ferttype
+            orig_df[3].loc[:,'HARVS'] = hrtype
             for j in range(len(headerff_style)):
                 dssatlines = self.write_df_asff(orig_df[j], headerff_style[j], rowff_style[j])
                 if i>=9: dssatlines[-1] = str(i+1) + dssatlines[-1][2:]
@@ -687,6 +690,7 @@ class DSSATManagement_base(Management_FileModifier):
         #path = config.MANAGEMENT.template
         nyears = config_management.GENERAL.number_years 
         
+        treatments_list = []
         #Cultivar options
         cullines = self.cultivar_modifier(crop = self.crop_code, variety_id = self.variety)
         #Field data
@@ -696,17 +700,19 @@ class DSSATManagement_base(Management_FileModifier):
         #Initial conditions ## soil info
         initlines = self.initial_conditions_modifier(sdul = sdul, slb = slb, slll = slll, ind_soil_water = ind_soil_water, 
                                                     crop = self.crop_code)
+
         #planting dates
         pllines = self.planting_modifier()
         #harvesting dates
-        hrlines = self.harvesting_modifier() ## TODO: harvest can be optional
+        hrlines = self.harvesting_modifier()
         # fertilizer
         fertilizer_listlines = self.fertilizer_pertreatment(**config_management.MANAGEMENT)
         ferti = 'N' if fertilizer_listlines is None else 'R'
+        harvest_schedule = not hrlines is None 
         # treatment
-        trlines = self.treatment_modifier(fertilizer = ferti)
+        trlines = self.treatment_modifier(fertilizer = ferti, harvest = harvest_schedule)
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
-        simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears, fertilizer = ferti, crop = self.crop,
+        simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears, fertilizer = ferti, crop = self.crop, harvest = harvest_schedule,
                                                         simulation_cropmodel = config_management.MANAGEMENT.get('simulation_cropmodel', -99))
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         autman_listlines = self.automatic_management_modifier()
@@ -720,21 +726,27 @@ class DSSATManagement_base(Management_FileModifier):
                                                         ] + flat_list_of_list(autman_listlines[i]))
         siumautolines = [self.lines[self._section_idx['SIMULATION CONTROLS']]] + flat_list_of_list(listsimulationout)
         
+        treatments_list.append(trlines)
+        treatments_list.append(cullines)
+        treatments_list.append(fllines)
+        treatments_list.append(initlines)
+        treatments_list.append(pllines)
         if fertilizer_listlines is not None:
-            allsections = [trlines, cullines, fllines, initlines, pllines, flat_list_of_list(fertilizer_listlines), hrlines, siumautolines]    
-        else:
-            allsections = [trlines, cullines, fllines, initlines, pllines, hrlines, siumautolines]
-            
+            treatments_list.append(flat_list_of_list(fertilizer_listlines))
+        if hrlines is not None:
+            treatments_list.append(hrlines)
+        treatments_list.append(siumautolines)
+
         fnman = os.path.join(os.path.dirname(config_path), f'{config_management.GENERAL.output_name}0001.{self.crop_code}X')
         
         with open(fnman, 'w') as fn:
             for line in self.lines[:self._section_idx['TREATMENTS']]:
                 fn.write(line)
             fn.write('\n')
-            for i, sect in enumerate(allsections):
+            for i, sect in enumerate(treatments_list):
                 for line in sect:
                     fn.write(line)
-                if i<len(allsections): fn.write('\n') #TODO check automatic management last
+                if i<len(treatments_list): fn.write('\n') #TODO check automatic management last
                 
         return fnman
         
@@ -777,7 +789,7 @@ class DSSATManagement_base(Management_FileModifier):
                 'plantingWindow': self.n_windows,
                 'startingDate': self.starting_date.strftime('%Y-%m-%d'), ## one month before of actual date
                 'plantingDate': self.planting_date.strftime('%Y-%m-%d'),
-                'harvestDate':  self.harvesting_date.strftime('%Y-%m-%d'),
+                'harvestDate':  self.harvesting_date.strftime('%Y-%m-%d') if self.harvesting_date else None,
                 'fertilizer_dates_after_planting': np.array(self.fertilizer['days_after_planting']).tolist() if self.fertilizer['days_after_planting'] is not None else None,
                 'fertilizer_npk': np.array(self.fertilizer['npk']).tolist() if self.fertilizer['npk'] is not None else None,
                 'simulation_cropmodel': CROPS_MODULES[self.crop.title()]

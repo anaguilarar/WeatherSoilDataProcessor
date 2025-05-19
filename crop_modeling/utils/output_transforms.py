@@ -259,10 +259,10 @@ def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column,
         crop_cycle_days = int(np.mean(subsettrno[harvest_column] - subsettrno[date_column]).days)
         if doy<(doy_prev-10):
             init_year+=1
-            print(init_year)
         pdat = datetime.strptime(f'{init_year}-{doy}', "%Y-%j")
         hdat = pdat + timedelta(days=crop_cycle_days)
         dates[i] = [pdat, hdat]
+        doy_prev= doy
     df = pd.DataFrame(dates).T.reset_index()
     return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day', 
                             1: f'{harvest_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
