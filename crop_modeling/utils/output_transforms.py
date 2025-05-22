@@ -309,9 +309,9 @@ def coffee_yield_data_summarized(yield_data, date_column:str = 'HDAT', yield_col
         start_year, end_year = np.min(years), np.max(years)
         
         subset_cycle['nyear_month_day'] = ['{}-{}-{}'.format(
-            '200{}'.format(year-start_year) if (year-start_year)<9 else '00{}'.format(year-start_year),
-            '0{}'.format(month) if month<9 else month,
-            '0{}'.format(day) if day<9 else day
+            '200{}'.format(year-start_year) if (year-start_year)<=9 else '20{}'.format(year-start_year),
+            '0{}'.format(month) if month<=9 else month,
+            '0{}'.format(day) if day<=9 else day
             ) for year, month,day in zip(subset_cycle['date'].dt.year,
                                         subset_cycle['date'].dt.month, subset_cycle['date'].dt.day)]
         
