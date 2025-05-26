@@ -1,8 +1,16 @@
-import numpy as np
+import sys
+import importlib.util
 import os
-import pandas as pd
+dssattools_spec = importlib.util.find_spec("DSSATTools")
 
-try:
-    from Py_DSSATTools.DSSATTools.weather import Weather
-except:
-    from Py_DSSATTools.DSSATTools.weather import Weather
+if dssattools_spec is not None:
+    try:
+        from DSSATTools.weather import Weather
+    except:
+        from DSSATTools.weather import Weather
+
+else:
+    try:
+        from Py_DSSATTools.DSSATTools.weather import Weather
+    except:
+        from Py_DSSATTools.DSSATTools.weather import Weather

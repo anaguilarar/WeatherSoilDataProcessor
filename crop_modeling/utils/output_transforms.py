@@ -1,10 +1,10 @@
 import pandas as pd
 import os
 import numpy as np
-from math import ceil
 from calendar import monthrange
 from datetime import datetime, timedelta
 from tqdm import tqdm
+import xarray
 import concurrent.futures
 
 from ..caf.output import CAFOutputData
@@ -323,6 +323,46 @@ def coffee_yield_data_summarized(yield_data, date_column:str = 'HDAT', yield_col
             
     return pd.concat(datatoconcatenate)
 
+## spatial pixeldata
+def spatial_dummy_crop_cycle_dates(dates_grouped_by_treatment, initial_year = None):
+    date_column = 'PDAT'
+    init_year = initial_year or 2000
+    doy_prev = 0
+    dates = {}
+    #dates_grouped_by_treatment = dim_dates.reshape(dim_dates.shape[0]//plantingWindow, plantingWindow).T
+    for i in range(dates_grouped_by_treatment.shape[0]):
+        subsettrno = dates_grouped_by_treatment[i].copy()
+
+        doy = int(np.mean(pd.Series(subsettrno).dt.day_of_year))
+
+        if doy<(doy_prev-10):
+            init_year+=1
+        pdat = datetime.strptime(f'{init_year}-{doy}', "%Y-%j")
+        dates[i] = [pdat]
+        doy_prev= doy
+    df = pd.DataFrame(dates).T.reset_index()
+
+    return df.rename(columns={'index':'TRNO', 0: f'{date_column.lower()}_year_month_day'}).reset_index()[f'{date_column.lower()}_year_month_day'].values
+
+
+def summarize_spatial_yields_by_time_window(xrdata, plantingWindow, target_dim_name = 'HWAH', date_dim_name = 'date', initial_year:int = 2000):
+    
+    dim_dates = xrdata[date_dim_name].values
+    
+    dates_grouped_by_treatment = dim_dates.reshape(dim_dates.shape[0]//plantingWindow, plantingWindow).T
+    newdates = spatial_dummy_crop_cycle_dates(dates_grouped_by_treatment, initial_year = initial_year)
+    target_vals = [xrdata[target_dim_name].sel(date = dates_grouped_by_treatment[i]).mean(dim = [date_dim_name]).values for i in range(dates_grouped_by_treatment.shape[0])]
+    
+    historic_spatial_yield = xarray.Dataset(
+    {
+        "HWAH": (("date","y", "x"), np.array(target_vals)),
+    },
+    coords={"x": xrdata.x.values, "y": xrdata.y.values, "date": newdates},
+    )
+    historic_spatial_yield.attrs= xrdata.attrs
+    historic_spatial_yield.attrs['count'] = 1
+    
+    return historic_spatial_yield
 
 ## summarize weather
 def summarize_event_weather(weather, init_dates: pd.Series, end_dates: pd.Series, weathercol_index):
