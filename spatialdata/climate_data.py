@@ -83,7 +83,8 @@ def donwload_mlt_data_from_agera5(
     aoi_extent: List[float], 
     product: str= "sis-agrometeorological-indicators", 
     statistic: Optional[str] = None,
-    ncores: int = 10
+    ncores: int = 10,
+    version: str ="1_1"
 ) -> None:
     """
     Download multiple layers of data from AgEra5 for a given variable and time range.
@@ -104,7 +105,8 @@ def donwload_mlt_data_from_agera5(
         AgEra5 product type (e.g., 'sis-agrometeorological-indicators').
     statistic : Optional[str], optional
         Statistic to be retrieved (if applicable). Defaults to None.
-
+    statistic : Optional[str], optional
+        Product Version currently there is 1_1  and 2_0. Defaults 1_1.
     Returns
     -------
     None
@@ -137,7 +139,7 @@ def donwload_mlt_data_from_agera5(
 
 
     years = list(range(init_year,end_year+1))
-    query_dict = {"version": "1_1",
+    query_dict = {"version": version, # TODO CHANGE TO VERSION 2_0 
                     "area":aoi_extent,
                     "variable": variable if isinstance(variable, list) else [variable],
                     "statistic": [""] if statistic is None else statistic}
