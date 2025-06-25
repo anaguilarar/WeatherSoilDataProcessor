@@ -36,6 +36,22 @@ def reproject_xarray(xrdata, target_crs, src_crs = None):
 
 import xarray
 
+def create_yield_raster_single_time_window(ref_raster, model_data, ycol_name ='HWAH', datecol_name = 'PDAT'):
+    
+    tmparray = np.full_like(ref_raster.values, np.nan).flatten()
+    for k,v in model_data.items():
+        try:
+            tmparray[int(k)] = v.output_data()[[ycol_name,datecol_name]][ycol_name].values[0]
+        except:
+            continue
+    rasterdata = list_tif_2xarray(tmparray.reshape(ref_raster.values.shape), transform=ref_raster.rio.transform(),
+                    crs=ref_raster.rio.crs, bands_names=[ycol_name],depth_dim_name='date', dimsformat='CHW')
+
+    rasterdata = rasterdata.assign_coords( x =  ref_raster.x.values, y =  ref_raster.y.values)
+    rasterdata.attrs['transform'] = ref_raster.rio.transform()
+
+    return rasterdata
+
 
 def create_date_raster(idx, ref_raster, model_data, ycol_name = 'HWAH'):
     import rioxarray as rio

@@ -6,7 +6,9 @@ import shutil
 import subprocess
 from pathlib import Path
 from typing import List, Optional
+from datetime import datetime, timedelta
 
+import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
 from tqdm import tqdm
@@ -161,6 +163,7 @@ class DSSATBase(ModelBase):
         index_soilwat: int = 1,
         fertilizer_schedule:Optional[List] = None,
         verbose: bool = True,
+        sowing_date_information: dict = None
         ) -> None:
         """
         Set up the management configuration and create DSSAT experiment files.
@@ -199,7 +202,14 @@ class DSSATBase(ModelBase):
 
             soil = glob.glob(pathiprocess+'/*.SOL*')
             lat, long = coords_from_soil_file(soil[0])
-            
+            if sowing_date_information is not None:
+                initdoy = sowing_date_information['raster'].sel(x = long, y = lat, method = 'nearest').values[0]
+                if np.isnan(initdoy): continue
+                inityear = sowing_date_information['year']
+                pltdate = datetime.strptime(f'{inityear}-01-01',  '%Y-%m-%d') + timedelta(days=int(initdoy))
+                dssatm.planting_date = pltdate
+                dssatm.harvesting_date = None
+
             output = dssatm.create_file(template, pathiprocess, roi_id = roi_id,plantingWindow = plantingWindow,
                     index_soilwat = index_soilwat, fertilizer_schedule =fertilizer_schedule,
                     long = long, lat = lat, verbose = verbose)
