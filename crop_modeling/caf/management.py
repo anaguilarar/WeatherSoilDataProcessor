@@ -4,9 +4,15 @@ from typing import Dict
 def repeate_mpractice(ntimes, years, dayofyear, practice_value):
     array_c = np.zeros((ntimes*len(years),3), dtype=float)
     count = 0
+    if ntimes == 1:
+        array_c[:,0] = years
+        array_c[:,1] = dayofyear
+        array_c[:,2] = practice_value
+        return array_c
+        
     for y in years: 
         array_c[count:count+ntimes,0] = [y] * ntimes
-        if isinstance(dayofyear, list):
+        if isinstance(dayofyear, list) and ntimes>1:
             if ntimes == len(dayofyear):
                 array_c[count:count+ntimes,1] = dayofyear[:ntimes]
             else:
@@ -15,7 +21,6 @@ def repeate_mpractice(ntimes, years, dayofyear, practice_value):
             array_c[count:count+ntimes,1] = dayofyear
         array_c[count:count+ntimes,-1] = practice_value
         count +=ntimes
-    
     return array_c
 
 class CAFManagement():
