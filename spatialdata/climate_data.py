@@ -1,4 +1,21 @@
 import os
+import shutil
+import copy
+import concurrent.futures
+from datetime import datetime
+from typing import Dict, List, Optional
+
+import cdsapi
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import rasterio
+from rasterio.mask import mask
+from shapely.geometry import Polygon
+import tqdm
+import xarray
+
+import os
 import cdsapi
 import copy
 from typing import List, Optional, Dict
@@ -6,54 +23,54 @@ import concurrent.futures
 import pandas as pd
 from shapely.geometry import Polygon
 
-from .gis_functions import (from_polygon_2bbox, from_xyxy_2polygon, 
-                            list_tif_2xarray, read_raster_data)
-
-from .files_manager import (days_range_asstring, months_range_asstring, 
-                            split_date, create_yearly_query, uncompress_zip_path, find_date_instring)
-
-from datetime import datetime
-from .utils import download_file
 from .datacube import DataCubeBase
+from .files_manager import (
+    create_yearly_query,
+    days_range_asstring,
+    find_date_instring,
+    months_range_asstring,
+    split_date,
+    uncompress_zip_path
+)
+from .gis_functions import (
+    from_polygon_2bbox,
+    from_xyxy_2polygon,
+    list_tif_2xarray,
+    read_raster_data
+)
+from .utils import download_file
 
-from rasterio.mask import mask
-import rasterio
-import geopandas as gpd
 
-import numpy as np
-
-import tqdm
-import xarray
-
-import shutil
-
-def tansform_dates_for_AgEraquery(
+def transform_dates_for_AgEraquery(
         year: int, 
         init_day: Optional[int] = None, 
         end_day: Optional[int] = None, 
         init_month: Optional[int] = None, 
         end_month: Optional[int] = None
         ) -> Dict[str, List[str]]:
-    """
-    Transform input year, day, and month into a formatted query for AgEra5 data download.
+    """Transforms date components into a query dictionary for AgEra5.
+
+    This function generates lists of days and months as strings, formatted
+    for use in a cdsapi query.
 
     Parameters
     ----------
     year : int
-        Year of the query.
+        The year for the query.
     init_day : int, optional
-        Starting day of the month. If None, defaults to 0 (beginning of month).
+        The starting day of the month (1-31). Defaults to 1.
     end_day : int, optional
-        Ending day of the month. If None, defaults to 31 (end of the month).
+        The ending day of the month (1-31). Defaults to 31.
     init_month : int, optional
-        Starting month of the year (1-12). If None, defaults to 0 (beginning of the year).
+        The starting month of the year (1-12). Defaults to 1.
     end_month : int, optional
-        Ending month of the year (1-12). If None, defaults to 12 (end of the year).
+        The ending month of the year (1-12). Defaults to 12.
 
     Returns
     -------
-    Dict[str, List[str]]
-        Dictionary containing year, month, and day strings formatted for the query.
+    dict[str, list[str]]
+        A dictionary containing formatted 'year', 'month', and 'day' keys
+        suitable for an AgEra5 data request.
 
     Example
     -------
@@ -75,7 +92,7 @@ def tansform_dates_for_AgEraquery(
     }
 
 
-def donwload_mlt_data_from_agera5(
+def download_mlt_data_from_agera5(
     variable: str, 
     starting_date: str, 
     ending_date: str, 
@@ -84,7 +101,7 @@ def donwload_mlt_data_from_agera5(
     product: str= "sis-agrometeorological-indicators", 
     statistic: Optional[str] = None,
     ncores: int = 10,
-    version: str ="1_1"
+    version: str ="2_0"
 ) -> None:
     """
     Download multiple layers of data from AgEra5 for a given variable and time range.
@@ -119,16 +136,18 @@ def donwload_mlt_data_from_agera5(
     def download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, init_year, end_year):
 
         if year == init_year:
-            datesquery = tansform_dates_for_AgEraquery(year, init_day = init_day, end_day = 31, init_month = init_month, end_month = 12)
+            datesquery = transform_dates_for_AgEraquery(year, init_day = init_day, end_day = 31, init_month = init_month, end_month = 12)
         if year == end_year:
-            datesquery = tansform_dates_for_AgEraquery(year, init_day = 1, end_day = end_day, init_month = 1, end_month = end_month)
+            datesquery = transform_dates_for_AgEraquery(year, init_day = 1, end_day = end_day, init_month = 1, end_month = end_month)
         else:
-            datesquery = tansform_dates_for_AgEraquery(year)
+            datesquery = transform_dates_for_AgEraquery(year)
 
         year_query = copy.deepcopy(query_dict)
         year_query.update(datesquery) 
-        print(year, year_query)
         filename = os.path.join(output_folder, "{}.zip".format(year))
+        
+        print(f"Requesting data for year {year} with query: {year_query}")
+        
         client = cdsapi.Client()
         client.retrieve(product, year_query).download(target = filename)
         return filename
@@ -139,35 +158,57 @@ def donwload_mlt_data_from_agera5(
 
 
     years = list(range(init_year,end_year+1))
-    query_dict = {"version": version, # TODO CHANGE TO VERSION 2_0 
+    query_dict = {"version": version,
                     "area":aoi_extent,
                     "variable": variable if isinstance(variable, list) else [variable],
-                    "statistic": [""] if statistic is None else statistic}
+                    }
     
-    ## create queryies per month
-    #if len(years)<10:
-    #    for year in years:
-    #        download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
-    #else:
+    if statistic is not None: query_dict.update({"statistic":  statistic})
+        
     file_path_peryear = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
-        future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
-    
-        for future in concurrent.futures.as_completed(future_to_year):
-            year = future_to_year[future]
+    if ncores>0:
+            
+        with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
+            future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
+        
+            for future in concurrent.futures.as_completed(future_to_year):
+                year = future_to_year[future]
+                try:
+                        file_path = future.result()
+                        file_path_peryear[str(year)] = file_path
+                        print(f"Successfully downloaded data for year {year} to {file_path}")
+                except Exception as exc:
+                        print(f"Request for year {year} generated an exception: {exc}")
+    else:
+        for year in years:
             try:
-                    file_path = future.result()
-                    file_path_peryear[str(year)] = file_path
-                    print(f"Requested Year {year} \n downloaded in {file_path}")
+                file_path_peryear[str(year)] = download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
+                print(f"Successfully downloaded data for year {year} to {file_path}")
             except Exception as exc:
-                    print(f"Request for year {year} generated an exception: {exc}")
-
+                print(f"Request for year {year} generated an exception: {exc}")
+                
     return file_path_peryear
     
 
-
-
 class CHIRPS_download:
+    """Handles the downloading of CHIRPS precipitation data.
+
+    This class provides methods to construct URLs, query by date range,
+    and download data for specified areas of interest.
+
+    Parameters
+    ----------
+    frequency : str, optional
+        The temporal frequency of the data ('daily', 'monthly', etc.). 
+        Defaults to 'daily'.
+    sp_resolution : str, optional
+        The spatial resolution ('05' for 0.05 degree). Defaults to '05'.
+    """
+
+
+    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05') -> None:
+        self._frequency = frequency
+        self.resolution = sp_resolution
 
     def set_url(self, year, date):
 
@@ -177,12 +218,6 @@ class CHIRPS_download:
             year,
             date
         )
-
-
-    def __init__(self, frequency = 'daily', sp_resolution = '05') -> None:
-        self._frequency = frequency
-        self.resolution = sp_resolution
-
 
     def current_date(self):
         self._current_date + 1
@@ -194,17 +229,37 @@ class CHIRPS_download:
     def set_days(init_day, end_day):
         return days_range_asstring(init_day, end_day)
     
-        
     def _create_yearly_query(self):
         return create_yearly_query(self._initdate, self._enddate)
     
-    def download_data_per_year(self, year, output_path, extent):
+    def download_data_per_year(self, year:str, output_path:str, extent:List[float]) -> str:
+        """Downloads and compiles CHIRPS data for a single year into one NetCDF file.
+
+        Instead of saving one file per day, this method downloads all daily
+        data for a given year, stacks it into a single xarray.Dataset, and
+        saves it as one compressed NetCDF file.
+
+        Parameters
+        ----------
+        year : str
+            The year to download data for.
+        output_path : str
+            The directory to save the annual NetCDF file.
+        extent : list[float]
+            The bounding box [xmin, ymin, xmax, ymax] for the data.
+
+        Returns
+        -------
+        str or None
+            The path to the created NetCDF file, or None if no data was found.
+        """
         if not os.path.exists(os.path.join(output_path,year)): os.mkdir(os.path.join(output_path,year)) 
         
         for month in self._date[year].keys():
             stackimages = []
             for day in self._date[year][month]:
-                urlpath = self.set_url(year, '{}.{}.{}'.format(year, month,day))
+                date_str = '{}.{}.{}'.format(year, month,day)
+                urlpath = self.set_url(year, date_str)
                 print(urlpath)
                 with rasterio.open(urlpath) as src:
                     meta = src.profile
@@ -215,8 +270,27 @@ class CHIRPS_download:
 
         return os.path.join(output_path,year)
         
-    
-    def download_chirps(self, extent , init_date, ending_date, output_path = None, ncores = 10):
+    def download_chirps(self, extent: List[float], init_date: str, ending_date: str, output_path:str = None, ncores: int = 10):
+        """Downloads CHIRPS data for a given area and date range.
+
+        Parameters
+        ----------
+        extent : list[float]
+            The bounding box [xmin, ymin, xmax, ymax] for the data.
+        init_date : str
+            The starting date in 'YYYY-MM-DD' format.
+        ending_date : str
+            The ending date in 'YYYY-MM-DD' format.
+        output_path : str
+            The directory to save downloaded files.
+        ncores : int, optional
+            Number of parallel workers for downloading. Defaults to 10.
+
+        Returns
+        -------
+        dict[str, str]
+            A dictionary mapping each year to the path of the downloaded file.
+        """
         self._initdate = init_date
         self._enddate = ending_date
         self._current_date = init_date
@@ -241,9 +315,28 @@ class CHIRPS_download:
                 file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
                 
         return file_path_peryear
-def process_file(year_path_folder, filename, date, xdim_name, ydim_name, depthdim_name):
-    """
-    Helper function to read and process a single NetCDF file.
+def process_file(year_path_folder:str, filename:str, date:str, xdim_name:str, ydim_name:str, depthdim_name:str):
+    """Reads and processes a single NetCDF file into an xarray.Dataset.
+
+    Parameters
+    ----------
+    year_path_folder : str
+        The path to the folder containing the file.
+    filename : str
+        The name of the NetCDF file.
+    date : str
+        The date string ('YYYYMMDD') associated with the file.
+    xdim_name : str
+        The name of the x-dimension (e.g., 'longitude').
+    ydim_name : str
+        The name of the y-dimension (e.g., 'latitude').
+    depthdim_name : str
+        The name for the new time dimension.
+
+    Returns
+    -------
+    xarray.Dataset
+        A dataset containing the data from the file with a new time dimension.
     """
     dateasdatetime = datetime.strptime(date, '%Y%m%d')
     filepath = os.path.join(year_path_folder, filename)
@@ -315,159 +408,28 @@ def read_annual_data(path: str, year:str,xdim_name: str = 'longitude',
         return annual_data
     
 class ClimateDataDownload(object):
+    """Manages downloading of climate data from various sources.
+
+    This class orchestrates the download of different weather variables like
+    temperature, precipitation, and solar radiation from sources such as
+    AgEra5 and CHIRPS.
+
+    Parameters
+    ----------
+    starting_date : str
+        The start date for data queries, 'YYYY-MM-DD'.
+    ending_date : str
+        The end date for data queries, 'YYYY-MM-DD'.
+    aoi : Polygon, optional
+        A shapely Polygon defining the area of interest.
+    xyxy : list[float], optional
+        A bounding box [xmin, ymin, xmax, ymax]. Used if `aoi` is not provided.
+    output_folder : str
+        The root folder where all downloaded data will be stored.
     """
-    A class to handle downloading weather data (precipitation, temperature, solar radiation, etc.)
-    from different sources like CHIRPS, AgEra5, and custom data cubes.
-    """
-
-    @property
-    def _urls(self):
-        return {'datacube': 'https://zarr-query-api-rv7rkv4opa-uc.a.run.app/v1/',
-        'chirps': 'https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_{}/cogs/p{}/{}/chirps-v2.0.{}.cog', ##frequency,resolution,year,date
-        'agera5': 'sis-agrometeorological-indicators'
-        }
-
-    def download_from(self):
-        """
-        Specifies which data source to use for each weather variable.
-
-        Returns
-        -------
-        dict
-            Mapping of weather variables to data sources.
-        """
-
-        return {   'precipitation': 'datacube',
-            'temperature': 'datacube',
-            'solar_radiation': 'agera5',
-            'wind_speed': 'agera5',
-            'relative_humidity': 'datacube'
-            }
-        
-
-    def missions(self):
-        """
-        Specifies which mission is used for each weather variable.
-
-        Returns
-        -------
-        dict
-            Mapping of weather variables to missions (data source providers).
-        """
-
-        return {
-            'precipitation': 'chirps',
-            'temperature': 'agera5',
-            'wind_speed': 'agera5',
-            'solar_radiation': 'agera5',
-            'relative_humidity': 'agera5'
-        }
-
-    @staticmethod
-    def _create_dowload_folder(variable, path, suffix):
-        """
-        Creates a directory for downloading raw weather data if it doesn't already exist.
-
-        Parameters
-        ----------
-        variable : str
-            Name of the weather variable (e.g., 'precipitation', 'temperature').
-        path : str
-            The base path where data should be stored.
-        suffix : str, optional
-            Optional suffix to differentiate between data types, by default None.
-
-        Returns
-        -------
-        str
-            The path of the created folder.
-        """
-
-        output_path = os.path.join(path, f'{variable}_{suffix}_raw') if suffix else os.path.join(path, f'{variable}_raw')
-        
-        if not os.path.exists(output_path):
-            os.mkdir(output_path)
-        return output_path
-    
-    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0):
-        """
-        Downloads weather data for the specified variables.
-
-        Parameters
-        ----------
-        weather_variables : dict
-            A dictionary of weather variables and their respective information (e.g., source, mission). Currently there are only available the following options solar_radiation, temperature_tmax, temperature_tmin, and precipitation
-        suffix_output_folder : str, optional
-            Suffix for the output folder to differentiate data categories, by default None.
-        """
-        for var,info in weather_variables.items():
-            
-            outputpath = self._create_dowload_folder(var, self.output_folder, suffix_output_folder)
-
-            if 'wind_speed' in var:
-                file_paths = self._get_wind_speed(mission=info['mission'], 
-                                            urlhost=info['source'],
-                                            output_path=outputpath,
-                                            statistic = "24_hour_mean")
-                
-            if 'relative_humidity' in var:
-                file_paths = self._get_relative_humidity(mission=info['mission'], 
-                                            urlhost=info['source'],
-                                            output_path=outputpath,
-                                            time = info['time'])
-                
-            elif 'solar_radiation' in var:
-                file_paths = self._get_solar_radiation(mission=info['mission'], 
-                                            urlhost=info['source'],
-                                            output_path=outputpath)
-            
-            elif 'temperature_tmax' in var:
-                file_paths = self._get_temperature(mission=info['mission'], 
-                                            urlhost=info['source'],
-                                        output_path=outputpath,
-                                        statistic= 'tmax')
-            
-            elif 'temperature_tmin' in var:
-                file_paths = self._get_temperature(mission=info['mission'], 
-                                            urlhost=info['source'],
-                                        output_path=outputpath,
-                                        statistic= 'tmin')
-                
-            elif 'precipitation' in var:
-                file_paths = self._get_precipitation(output_path=outputpath, urlhost='chirps', mission='chirps', ncores = ncores)
-
-            else:
-                print(f"{var} is Not implemented yet!!")
-
-            if export_as_netcdf:
-                yearlist = list(file_paths.keys())
-                yearlistint = [int(i) for i in yearlist]
-                yearlistint.sort()
-                self.stack_annual_data(outputpath, yearlist[0], yearlist[-1], outputpath)
-            
-
-
-    @staticmethod
-    def stack_annual_data(path, init_year, end_year, output_path: str = None, removefolder = True):
-        assert init_year<=end_year, 'init year must be greather than ending year'
-        
-        if init_year != end_year:
-            for year in tqdm.tqdm(range(init_year, end_year+1)):
-                ClimateDataDownload.stack_annual_data(path,year,year, output_path, removefolder)
-                
-        else:
-            mltd_dataset = read_annual_data(path, str(init_year))
-            if output_path is not None:
-                mltd_dataset.to_netcdf(os.path.join(output_path, f'{init_year}.nc'))
-            if removefolder:
-                if os.path.isdir(os.path.join(path, str(init_year))):
-                    shutil.rmtree(os.path.join(path, str(init_year)))
-                if os.path.isfile(os.path.join(path, str(init_year) + '.zip')):
-                    os.remove(os.path.join(path, str(init_year) + '.zip'))
-
-
-
-    def __init__(self, starting_date = None, ending_date = None, aoi: Polygon = None, xyxy: List[float] = None, output_folder:str = None) -> None:
+    def __init__(self, starting_date: str, ending_date: str, 
+                 aoi: Optional[Polygon] = None, xyxy: Optional[List] = None, 
+                 output_folder: str = None) -> None:
 
         """
         initialize climate data class
@@ -496,8 +458,166 @@ class ClimateDataDownload(object):
             if not os.path.exists(output_folder):
                 os.mkdir(output_folder)
             self.output_folder = output_folder
+            
+    @property
+    def _urls(self):
+        return {'datacube': 'https://zarr-query-api-rv7rkv4opa-uc.a.run.app/v1/',
+        'chirps': 'https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_{}/cogs/p{}/{}/chirps-v2.0.{}.cog', ##frequency,resolution,year,date
+        'agera5': 'sis-agrometeorological-indicators'
+        }
 
-        ## TODO assert extent
+    def download_from(self):
+        """
+        Specifies which data source to use for each weather variable.
+
+        Returns
+        -------
+        dict
+            Mapping of weather variables to data sources.
+        """
+
+        return {   'precipitation': 'chirps',
+            'temperature': 'agera5',
+            'solar_radiation': 'agera5',
+            'wind_speed': 'agera5',
+            'relative_humidity': 'agera5',
+            'vapour_pressure': 'agera5'
+            }
+        
+    def missions(self):
+        """
+        Specifies which mission is used for each weather variable.
+
+        Returns
+        -------
+        dict
+            Mapping of weather variables to missions (data source providers).
+        """
+
+        return {
+            'precipitation': 'chirps',
+            'temperature': 'agera5',
+            'wind_speed': 'agera5',
+            'solar_radiation': 'agera5',
+            'relative_humidity': 'agera5',
+            'vapour_pressure': 'agera5'
+        }
+
+    @staticmethod
+    def _create_dowload_folder(variable, path, suffix):
+        """
+        Creates a directory for downloading raw weather data if it doesn't already exist.
+
+        Parameters
+        ----------
+        variable : str
+            Name of the weather variable (e.g., 'precipitation', 'temperature').
+        path : str
+            The base path where data should be stored.
+        suffix : str, optional
+            Optional suffix to differentiate between data types, by default None.
+
+        Returns
+        -------
+        str
+            The path of the created folder.
+        """
+
+        output_path = os.path.join(path, f'{variable}_{suffix}_raw') if suffix else os.path.join(path, f'{variable}_raw')
+        
+        if not os.path.exists(output_path):
+            os.mkdir(output_path)
+        return output_path
+    
+    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0, version = '2_0'):
+        """
+        Downloads weather data for the specified variables.
+
+        Parameters
+        ----------
+        weather_variables : dict
+            A dictionary of weather variables and their respective information (e.g., source, mission). Currently there are only available the following options solar_radiation, temperature_tmax, temperature_tmin, and precipitation
+        suffix_output_folder : str, optional
+            Suffix for the output folder to differentiate data categories, by default None.
+        """
+        
+        downloader_config = {
+            'wind_speed': {'func': self._get_wind_speed, 'params': {}},
+            'relative_humidity': {'func': self._get_relative_humidity, 'params': {}},
+            'solar_radiation': {'func': self._get_solar_radiation, 'params': {}},
+            'temperature_tmax': {'func': self._get_temperature, 'params': {'statistic': 'tmax'}},
+            'temperature_tmin': {'func': self._get_temperature, 'params': {'statistic': 'tmin'}},
+            'precipitation': {'func': self._get_precipitation, 'params': {}},
+        }
+        
+        for var,info in weather_variables.items():
+            outputpath = self._create_dowload_folder(var, self.output_folder, suffix_output_folder)
+            
+            key_found = next((key for key in downloader_config if key in var), None)
+            
+            if key_found:
+                config = downloader_config[key_found]
+                meteo_var_func = config['func']
+                params = {
+                    'mission':info.get('mission'),
+                    'urlhost':info.get('source'),
+                    'output_path':outputpath,
+                    'ncores': ncores,
+                    'version': version,
+                    **config['params']
+                }
+                if 'relative_humidity' in var: params.update({'time':info.get('time', None)})
+                file_paths = meteo_var_func(**params)
+                
+            else:
+                print(f"Variable '{var}' is not implemented yet.")
+                file_paths = None
+
+            if export_as_netcdf:
+                years = sorted([int(y) for y in file_paths.keys()])
+                self.stack_annual_data(outputpath, years[0], years[-1], outputpath)
+            
+
+
+    @staticmethod
+    def stack_annual_data(path: str, init_year: int, end_year: int, 
+                          output_path: Optional[str] = None, remove_source: bool = True):
+        """Reads, stacks, and saves annual data from NetCDF files for a given year range.
+
+        For each year, it processes individual daily/monthly files, concatenates them
+        into a single multi-temporal xarray Dataset, and saves it as a single NetCDF file.
+
+        Parameters
+        ----------
+        path : str
+            The directory containing the source yearly zip files or folders.
+        init_year : int
+            The starting year.
+        end_year : int
+            The ending year.
+        output_path : str, optional
+            The directory to save the final .nc files. Defaults to `path`.
+        remove_source : bool, optional
+            If True, removes the original zip file and unzipped folder after processing.
+        """
+        assert init_year<=end_year, 'init year must be greather than ending year'
+        
+        if init_year != end_year:
+            for year in tqdm.tqdm(range(init_year, end_year+1)):
+                ClimateDataDownload.stack_annual_data(path,year,year, output_path, remove_source)
+                
+        else:
+            try:
+                mltd_dataset = read_annual_data(path, str(init_year))
+                if output_path is not None:
+                    mltd_dataset.to_netcdf(os.path.join(output_path, f'{init_year}.nc'))
+                if remove_source:
+                    if os.path.isdir(os.path.join(path, str(init_year))):
+                        shutil.rmtree(os.path.join(path, str(init_year)))
+                    if os.path.isfile(os.path.join(path, str(init_year) + '.zip')):
+                        os.remove(os.path.join(path, str(init_year) + '.zip'))
+            except (FileNotFoundError, Exception) as e:
+                print(f"Could not process year {year}: {e}")
         
 
     def _query_config(self, product = 'datacube', mission = 'chirps', 
@@ -517,8 +637,23 @@ class ClimateDataDownload(object):
                 'url': self._urls['datacube'] + 'getdataArea',
                 'download_path':  output_folder
             }
+            
+    def _download_agera5_variable(self, variable: str, statistic: Optional[List] = None,
+                                  output_path: str = None, ncores: int = 1, version: str = '2_0') -> Dict:
+        """Generic method to download a variable from AgEra5."""
+        return download_mlt_data_from_agera5(
+            variable,
+            starting_date=self._init_date,
+            ending_date=self._ending_date,
+            aoi_extent=[self.aoi_extent[3], self.aoi_extent[0], self.aoi_extent[1], self.aoi_extent[2]],
+            output_folder=output_path,
+            statistic=statistic,
+            ncores=ncores,
+            version=version
+        )
+        
 
-    def _get_wind_speed(self, mission = None, urlhost = None, output_path = None, statistic = "24_hour_mean"):
+    def _get_wind_speed(self, mission = None, urlhost = None, output_path = None, statistic = "24_hour_mean", version = '2_0', ncores:int = 1):
         """
         function for downloading 10m_wind_speed data.
 
@@ -530,29 +665,49 @@ class ClimateDataDownload(object):
             The base URL for the data source.
         output_path : str
             The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
         """
-        mission = self.missions()['relative_humidity'] if mission is None else mission
-        urlhost = self.download_from()['relative_humidity'] if urlhost is None else urlhost
+        mission = self.missions()['wind_speed'] if mission is None else mission
+        urlhost = self.download_from()['wind_speed'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-
         if mission == 'agera5' and urlhost == 'datacube':
-            #request = self._query_config(product = 'datacube', mission = mission, 
-            #variable = 'relativehumidity', output_folder= output_path)
-            #print('request: {}'.format(request))
-            #dc_f = download_file(**request)
-            #return dc_f    
-            pass
-
+            raise ValueError("There is no wind_speed product on data cube implemention yet")
+        
         if mission == 'agera5' and urlhost == 'agera5':
-            return donwload_mlt_data_from_agera5('10m_wind_speed', 
-                                        starting_date= self._init_date,
-                                        ending_date=self._ending_date, 
-                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
-                                        output_folder= output_path,
-                                        statistic = statistic)
+            return self._download_agera5_variable(variable='10m_wind_speed', statistic = statistic if isinstance(statistic, list) else [statistic],
+                                           output_path=output_path, ncores=ncores, version=version)
+        else:
+            return None
 
+    def _get_vapour_pressure(self, mission = None, urlhost = None, output_path = None, statistic = "24_hour_mean", version = '2_0', ncores:int = 1):
+        """
+        function for downloading vapour_pressure data.
 
-    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None, ncores = 10):
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
+        """
+        mission = self.missions()['vapour_pressure'] if mission is None else mission
+        urlhost = self.download_from()['vapour_pressure'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+        if mission == 'agera5' and urlhost == 'datacube':
+            raise ValueError("There is no vapour_pressure product on data cube implemention yet")
+        
+        if mission == 'agera5' and urlhost == 'agera5':
+            return self._download_agera5_variable(variable='vapour_pressure', statistic = statistic if isinstance(statistic, list) else [statistic],
+                                           output_path=output_path, ncores=ncores, version=version)
+        else:
+            return None
+
+    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None, ncores = 10, version = '2_0', **kwargs):
         """
         function for downloading relativity_humidity data.
 
@@ -564,6 +719,8 @@ class ClimateDataDownload(object):
             The base URL for the data source.
         output_path : str
             The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
         """
         mission = self.missions()['relative_humidity'] if mission is None else mission
         urlhost = self.download_from()['relative_humidity'] if urlhost is None else urlhost
@@ -576,16 +733,12 @@ class ClimateDataDownload(object):
             dc_f = download_file(**request)
             return dc_f    
 
-
         if mission == 'agera5' and urlhost == 'agera5':
-            return donwload_mlt_data_from_agera5('2m_relative_humidity', 
-                                        starting_date= self._init_date,
-                                        ending_date=self._ending_date, 
-                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
-                                        output_folder= output_path,
-                                        statistic= [""], ncores = ncores)
+            return self._download_agera5_variable(variable='2m_relative_humidity', output_path=output_path, ncores=ncores, version=version)
+        else:
+            return None
     
-    def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None, ncores = 10):
+    def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None, ncores = 10, version = '2_0'):
         """
         Placeholder function for downloading solar radiation data.
 
@@ -597,6 +750,8 @@ class ClimateDataDownload(object):
             The base URL for the data source.
         output_path : str
             The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
         """
         mission = self.missions()['solar_radiation'] if mission is None else mission
         urlhost = self.download_from()['solar_radiation'] if urlhost is None else urlhost
@@ -606,14 +761,12 @@ class ClimateDataDownload(object):
             raise ValueError("There is no solar radiation product on data cube implemention yet")
 
         if mission == 'agera5' and urlhost == 'agera5':
-            return donwload_mlt_data_from_agera5('solar_radiation_flux', 
-                                        starting_date= self._init_date,
-                                        ending_date=self._ending_date, 
-                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
-                                        output_folder= output_path,
-                                        statistic= [""], ncores = ncores)
+            return self._download_agera5_variable(
+                'solar_radiation_flux', None, output_path, ncores, version)
+        else:
+            return None
 
-    def _get_precipitation(self, mission = None, urlhost = None, output_path = None, ncores = 10):
+    def _get_precipitation(self, mission = None, urlhost = None, output_path = None, ncores = 10, **kwargs):
         """
         Placeholder function for downloading precipitation data.
 
@@ -643,7 +796,7 @@ class ClimateDataDownload(object):
             return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = ncores)
 
 
-    def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax", ncores = 10):
+    def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax", ncores = 10, version = '2_0'):
         """
         Placeholder function for downloading temperature data (e.g., max or min).
 
@@ -657,6 +810,8 @@ class ClimateDataDownload(object):
             The directory to save the downloaded data.
         statistic : str
             The temperature statistic to retrieve (e.g., 'tmax' for maximum temperature).
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
         """
         mission = self.missions()['temperature'] if mission is None else mission
         urlhost = self.download_from()['temperature'] if urlhost is None else urlhost
@@ -669,20 +824,21 @@ class ClimateDataDownload(object):
             dc_f = download_file(*request)
 
         if mission == 'agera5' and urlhost == 'agera5':
-            if statistic == 'tmax':
-                strstatistic = ["24_hour_maximum"]
-            elif statistic == 'tmin':
-                strstatistic = ["24_hour_minimum"]
-            elif statistic == 'tmean':
-                strstatistic = ["24_hour_mean"]
-            else:
-                raise ValueError("It is not included")
-            return donwload_mlt_data_from_agera5('2m_temperature', 
-                                        starting_date= self._init_date,
-                                        ending_date=self._ending_date, 
-                                        aoi_extent= [self.aoi_extent[3],self.aoi_extent[0],self.aoi_extent[1],self.aoi_extent[2]], 
-                                        output_folder= output_path,
-                                        statistic=strstatistic, ncores = ncores)
+            summ_statistic = {
+                'tmax':["24_hour_maximum"],
+                'tmin': ["24_hour_minimum"],
+                'tmean': ["24_hour_mean"]
+            }
+            
+            key_found = next((var for var in summ_statistic if statistic in var), None)
+            if key_found is None: print("Check the statitisc"); return None
+            
+            return self._download_agera5_variable('2m_temperature', statistic=summ_statistic[key_found], 
+                                                    output_path=output_path, ncores=ncores, version=version)
+            
+        else:
+            return None
+
             
 
 class MLTWeatherDataCube(DataCubeBase):
