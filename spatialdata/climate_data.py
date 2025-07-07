@@ -101,7 +101,8 @@ def download_mlt_data_from_agera5(
     product: str= "sis-agrometeorological-indicators", 
     statistic: Optional[str] = None,
     ncores: int = 10,
-    version: str ="2_0"
+    version: str ="2_0",
+    max_attempts = 3
 ) -> None:
     """
     Download multiple layers of data from AgEra5 for a given variable and time range.
@@ -124,6 +125,8 @@ def download_mlt_data_from_agera5(
         Statistic to be retrieved (if applicable). Defaults to None.
     statistic : Optional[str], optional
         Product Version currently there is 1_1  and 2_0. Defaults 1_1.
+    statistic : Optional[INT], optional
+        Max number of download attempts.
     Returns
     -------
     None
@@ -134,25 +137,27 @@ def download_mlt_data_from_agera5(
     >>> download_mlt_data_from_agera5('temperature', '2023-01-01', '2023-12-31', './data', [-10, 35, 10, 50], 'sis-agrometeorological-indicators')
     """
     def download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, init_year, end_year):
+        try:
+            if year == init_year:
+                datesquery = transform_dates_for_AgEraquery(year, init_day = init_day, end_day = 31, init_month = init_month, end_month = 12)
+            if year == end_year:
+                datesquery = transform_dates_for_AgEraquery(year, init_day = 1, end_day = end_day, init_month = 1, end_month = end_month)
+            else:
+                datesquery = transform_dates_for_AgEraquery(year)
 
-        if year == init_year:
-            datesquery = transform_dates_for_AgEraquery(year, init_day = init_day, end_day = 31, init_month = init_month, end_month = 12)
-        if year == end_year:
-            datesquery = transform_dates_for_AgEraquery(year, init_day = 1, end_day = end_day, init_month = 1, end_month = end_month)
-        else:
-            datesquery = transform_dates_for_AgEraquery(year)
-
-        year_query = copy.deepcopy(query_dict)
-        year_query.update(datesquery) 
-        filename = os.path.join(output_folder, "{}.zip".format(year))
-        
-        print(f"Requesting data for year {year} with query: {year_query}")
-        
-        client = cdsapi.Client()
-        client.retrieve(product, year_query).download(target = filename)
-        return filename
+            year_query = copy.deepcopy(query_dict)
+            year_query.update(datesquery) 
+            filename = os.path.join(output_folder, "{}.zip".format(year))
+            
+            print(f"Requesting data for year {year} with query: {year_query}")
+            
+            client = cdsapi.Client()
+            client.retrieve(product, year_query, filename)
+            print(f"Successfully downloaded data for year {year} to {filename}")
+            return filename
+        except Exception:
+            return None
     
-
     init_year, init_month, init_day = split_date(starting_date)
     end_year, end_month, end_day = split_date(ending_date)
 
@@ -166,26 +171,47 @@ def download_mlt_data_from_agera5(
     if statistic is not None: query_dict.update({"statistic":  statistic})
         
     file_path_peryear = {}
+    
     if ncores>0:
             
-        with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
-            future_to_year ={executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1]): (year) for year in years}
+        tasks_to_retry = {year: 1 for year in years}  # {year: attempt_count}
         
-            for future in concurrent.futures.as_completed(future_to_year):
-                year = future_to_year[future]
-                try:
+        while tasks_to_retry:
+            tasks_this_round = tasks_to_retry.copy()
+            tasks_to_retry.clear()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
+                future_to_year = {
+                    executor.submit(download_one_year_data, year, query_dict, init_day, end_day, init_month, end_month, init_year, end_year): year
+                    for year in tasks_this_round
+                }
+
+                for future in concurrent.futures.as_completed(future_to_year):
+                    year = future_to_year[future]
+                    attempt_num = tasks_this_round[year]
+                    try:
                         file_path = future.result()
-                        file_path_peryear[str(year)] = file_path
-                        print(f"Successfully downloaded data for year {year} to {file_path}")
-                except Exception as exc:
-                        print(f"Request for year {year} generated an exception: {exc}")
+                        if file_path:
+                            file_path_peryear[str(year)] = file_path
+                        else:
+                            raise Exception("Download function returned None")
+                    except Exception as exc:
+                        print(f"Attempt {attempt_num} for year {year} failed: {exc}")
+                        if attempt_num < max_attempts:
+                            tasks_to_retry[year] = attempt_num + 1
+                        else:
+                            print(f"Failed to download data for year {year} after {max_attempts} attempts.")
     else:
         for year in years:
-            try:
-                file_path_peryear[str(year)] = download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
-                print(f"Successfully downloaded data for year {year} to {file_path}")
-            except Exception as exc:
-                print(f"Request for year {year} generated an exception: {exc}")
+            for attempt in range(1, max_attempts + 1):
+                print(f"Downloading year {year} (Attempt {attempt}/{max_attempts})...")
+
+                result_filepath = download_one_year_data(year, query_dict, init_day, end_day, init_month, end_month, years[0], years[-1])
+                if result_filepath:
+                    file_path_peryear[str(year)] = result_filepath
+                    break
+            else:
+                print(f"Failed to download data for year {year} after {max_attempts} attempts.")
                 
     return file_path_peryear
     
@@ -543,6 +569,7 @@ class ClimateDataDownload(object):
         
         downloader_config = {
             'wind_speed': {'func': self._get_wind_speed, 'params': {}},
+            'vapour_pressure': {'func': self._get_vapour_pressure, 'params': {}},
             'relative_humidity': {'func': self._get_relative_humidity, 'params': {}},
             'solar_radiation': {'func': self._get_solar_radiation, 'params': {}},
             'temperature_tmax': {'func': self._get_temperature, 'params': {'statistic': 'tmax'}},
