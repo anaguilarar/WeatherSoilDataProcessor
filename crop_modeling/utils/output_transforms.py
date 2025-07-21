@@ -66,7 +66,8 @@ class ColumnNames():
             'caf': {'date': 'HDAT',
                 'yield':'harvDM_f_hay',
                 'flowering_date': 'DayFl',
-                'number_of_cycle': 'n_cycle'
+                'number_of_cycle': 'n_cycle',
+                'hdate': 'DayHarv(1)'
             }
         }
     
@@ -248,7 +249,7 @@ def two_digit_format(value):
     return f'0{value}' if value < 10 else str(value)
 
 
-def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column, initial_year = None):
+def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column=None, initial_year = None):
     init_year = initial_year or 2000
     doy_prev = 0
     dates = {}
@@ -256,7 +257,10 @@ def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column,
 
         subsettrno = crop_data.loc[crop_data[group_by] == i].reset_index()
         doy = int(np.mean(subsettrno[date_column].dt.day_of_year))
-        crop_cycle_days = int(np.mean(subsettrno[harvest_column] - subsettrno[date_column]).days)
+        if harvest_column is not None:
+            crop_cycle_days = int(np.mean(subsettrno[harvest_column] - subsettrno[date_column]).days)
+        else:
+            crop_cycle_days = 0
         if doy<(doy_prev-10):
             init_year+=1
         pdat = datetime.strptime(f'{init_year}-{doy}', "%Y-%j")
@@ -264,8 +268,11 @@ def get_dummy_crop_cycle_dates(crop_data, group_by, date_column, harvest_column,
         dates[i] = [pdat, hdat]
         doy_prev= doy
     df = pd.DataFrame(dates).T.reset_index()
-    return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day', 
+    if harvest_column is not None:
+        return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day', 
                             1: f'{harvest_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
+    else:
+        return df.rename(columns={'index':group_by, 0: f'{date_column.lower()}_year_month_day'}).sort_values([group_by]).reset_index()
     
 def summarize_dates_bygroup(yield_data, group_by:str, date_column:str = 'PDAT', harvest_column:str = 'HDAT', refplanting_year = None, refharvesting_year = None):
     

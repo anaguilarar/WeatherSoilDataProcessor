@@ -366,6 +366,7 @@ class SpatialCM():
     def __init__(self, 
         configuration_path: Optional[str] = None,
         configuration_dict: Optional[dict] = None,
+        load_env_data = True
         ) -> None:
         self.config = None
         self._geodata = None
@@ -380,7 +381,7 @@ class SpatialCM():
         else:
             raise ValueError("Either `configuration_path` or `configuration_dict` must be provided.")
 
-        self._setup()
+        self._setup(load_env_data = load_env_data)
     
     def _read_geosp_data(self, attr):
         path = self.config.SPATIAL_INFO.get(attr,None)
@@ -436,13 +437,14 @@ class SpatialCM():
             
         return self._dem  
     
-    def _setup(self):
+    def _setup(self, load_env_data):
         """
         Initializes essential properties and validates configurations.
         """
-        self.soil  # Load soil dataset
-        self.climate  # Load climate dataset
-        self.dem
+        if load_env_data:
+            self.soil  # Load soil dataset
+            self.climate  # Load climate dataset
+            self.dem  # Load dem dataset
         
         model = self.config.GENERAL_INFO.get('model', None)
         working_path = self.config.GENERAL_INFO.get('working_path', 'tmp')
@@ -501,37 +503,10 @@ class SpatialCM():
                 data.attrs['dtype'] = 'float'
                 SpatialData()._save_asnc(data, fn = os.path.join(self._tmp_path, f'{name}_.nc'))
                 
-    
-    def create_roi_sp_data(self, roi_index: Optional[int] = None,
-        roi: Optional[gpd.GeoDataFrame] = None,
-        crs: str = "EPSG:4326",
-        group_codes: Optional[dict] = None,
-        create_group_splayer = False,
-        export_spatial_data = False,
-        verbose = False
-    ) -> Optional[Path]:
-        """
-        Extracts and processes data for a region of interest (ROI).
-
-        Parameters
-        ----------
-        roi_index : int, optional
-            Index of the ROI in `geo_features`.
-        roi : gpd.GeoDataFrame, optional
-            Geodataframe representing the region of interest.
-        crs : str, default="EPSG:4326"
-            Coordinate Reference System (CRS) for output data.
-        group_codes : dict, optional
-            Group codes for aggregating soil or climate data.
-
-        Returns
-        -------
-        Optional[Path]
-            Path to the temporary directory containing DSSAT files, or None if no data is found.
-        """
-        demm = None
+    def _process_roi_sp_data(self,  roi_index: Optional[int] = None,
+                            roi: Optional[gpd.GeoDataFrame] = None,
+                            export_spatial_data = False,verbose = False):
         
-        group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         if roi_index:
             roi = self.geo_features.iloc[roi_index:roi_index+1]
         if roi is None:
@@ -554,6 +529,48 @@ class SpatialCM():
         # export spatial data
         if export_spatial_data:
             self.export_spatialdata_asnc(weatherm, soilm, demm)
+            
+        return weatherm, soilm, demm 
+    
+    def create_roi_sp_data(self, roi_index: Optional[int] = None,
+        roi: Optional[gpd.GeoDataFrame] = None,
+        crs: str = "EPSG:4326",
+        group_codes: Optional[dict] = None,
+        create_group_splayer = False,
+        export_spatial_data = False,
+        verbose = False,
+        data_dict: dict = None
+    ) -> Optional[Path]:
+        """
+        Extracts and processes data for a region of interest (ROI).
+
+        Parameters
+        ----------
+        roi_index : int, optional
+            Index of the ROI in `geo_features`.
+        roi : gpd.GeoDataFrame, optional
+            Geodataframe representing the region of interest.
+        crs : str, default="EPSG:4326"
+            Coordinate Reference System (CRS) for output data.
+        group_codes : dict, optional
+            Group codes for aggregating soil or climate data.
+        data_dict : dict, optional
+            Directory that contains the dem, weather, and soil data
+        Returns
+        -------
+        Optional[Path]
+            Path to the temporary directory containing DSSAT files, or None if no data is found.
+        """
+        demm = None
+        
+        group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
+        self.country = self.config.GENERAL_INFO.get('country', None)
+        
+        if data_dict is None:
+            ## get data
+            weatherm, soilm, demm = self._process_roi_sp_data(roi, roi_index= roi_index, roi=roi, export_spatial_data=export_spatial_data, verbose=verbose)
+        else:
+            weatherm, soilm, demm = data_dict['weather'], data_dict['soil'], data_dict['dem']
 
         if group_by == 'texture':
             weatherm, soilm, demm = add_layer_texture_to_datacubes(weatherm, soilm, demm)
