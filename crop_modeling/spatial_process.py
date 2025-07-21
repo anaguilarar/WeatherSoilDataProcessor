@@ -52,7 +52,6 @@ def create_yield_raster_single_time_window(ref_raster, model_data, ycol_name ='H
 
     return rasterdata
 
-
 def create_date_raster(idx, ref_raster, model_data, ycol_name = 'HWAH'):
     import rioxarray as rio
     tmparray = np.full_like(ref_raster.values, np.nan).flatten()
@@ -69,7 +68,6 @@ def create_mlt_yield_raster(ref_raster, model_data, ycol_name = 'HWAH' ):
     dates = v.output_data().sort_values('PDAT')[['PDAT']]
     
     ref_raster_c = ref_raster.copy()
-     
     alldata = {k:v.output_data().sort_values('PDAT')[[ycol_name,'PDAT']] for k, v in model_data.items()}
     rasterlis = []
     for idate in tqdm(range(dates.PDAT.values.shape[0])):
@@ -85,8 +83,6 @@ def create_mlt_yield_raster(ref_raster, model_data, ycol_name = 'HWAH' ):
     
     return rasterd
     
-    
-
 def get_roi_data(roi: gpd.GeoDataFrame,
     weather_datacube: xarray.Dataset,
     soil_datacube: Union[xarray.Dataset, dict],
@@ -463,15 +459,13 @@ class SpatialCM():
             
         return buffer
     
-    def get_masked_data(self, roi, buffer, verbose = True):
+    def get_masked_data(self, roi, verbose = True):
         """
             Retrieves masked spatial data for a region of interest (ROI).
             Parameters
             ----------
             roi : Any
                 The region of interest for which the data is to be retrieved.
-            buffer : Any
-                The buffer distance around the ROI.
             verbose : bool, optional
                 If True, logs information about the data loading process. Defaults to True.
             Returns
@@ -488,9 +482,13 @@ class SpatialCM():
             demm = SpatialData()._open_dataset(self._dem_tmppath) if os.path.exists(self._dem_tmppath) else None
         else:
             if verbose: logging.info("Extracting spatial data from source")
+            roi = roi.to_crs(self.climate.rio.crs)
+            buffer = self._buffer(roi)
             weatherm, soilm = get_roi_data(roi, self.climate, self.soil, scale_factor= self.config.SPATIAL_INFO.scale_factor, buffer= buffer)
         if demm is None and self.model.name in ['caf','simple_model']:
             if verbose: logging.info("Creating DEM file")
+            roi = roi.to_crs(self.climate.rio.crs)
+            buffer = self._buffer(roi)
             assert self.dem is not None, "Please provide DEM data, check DEM path "
             demm = masking_rescaling_xrdata(self.dem, roi, buffer=buffer, resample_ref =weatherm.isel(date = 0), return_original_size=True, method = 'nearest')
             demm.attrs['crs'] = get_crs_fromxarray(weatherm)
@@ -512,13 +510,8 @@ class SpatialCM():
         if roi is None:
             raise ValueError("Provide either an ROI index or a GeoDataFrame for the region of interest.")
         
-        # create buffer
-        roi = roi.to_crs(self.climate.rio.crs)
-        buffer = self._buffer(roi)
-        self.country = self.config.GENERAL_INFO.get('country', None)
-        
         ## get data
-        weatherm, soilm, demm = self.get_masked_data(roi, buffer, verbose = verbose)
+        weatherm, soilm, demm = self.get_masked_data(roi, verbose = verbose)
         
         ## check both sources must have data
         datainweather = all(not all(np.isnan(np.unique(weatherm.isel(date = 0)[var].values))) for var in list(weatherm.data_vars.keys()))
@@ -561,14 +554,13 @@ class SpatialCM():
         Optional[Path]
             Path to the temporary directory containing DSSAT files, or None if no data is found.
         """
-        demm = None
         
         group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         self.country = self.config.GENERAL_INFO.get('country', None)
         
         if data_dict is None:
             ## get data
-            weatherm, soilm, demm = self._process_roi_sp_data(roi, roi_index= roi_index, roi=roi, export_spatial_data=export_spatial_data, verbose=verbose)
+            weatherm, soilm, demm = self._process_roi_sp_data(roi = roi, roi_index= roi_index, export_spatial_data=export_spatial_data, verbose=verbose)
         else:
             weatherm, soilm, demm = data_dict['weather'], data_dict['soil'], data_dict['dem']
 
@@ -724,7 +716,6 @@ class SpatialCM():
             grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{group_by}.tif'))
             
         except:
-            
             grouplayer = reproject_xrdata(grouplayer, 'EPSG:4326')
             grouplayer = grouplayer.rio.write_crs('EPSG:4326')
             grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{group_by}.tif'))
