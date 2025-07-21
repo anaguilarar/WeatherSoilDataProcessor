@@ -1,13 +1,9 @@
 DATES:
-  starting_date: "2001-01-01"
-  ending_date: "2001-12-31"
+  starting_date: "1990-01-01"
+  ending_date: "2024-12-31"
 
 WEATHER:
   variables:
-    precipitation:
-      mission: chirps
-      source: chips
-
     solar_radiation: 
       mission: agera5
       source: agera5
@@ -19,11 +15,14 @@ WEATHER:
     temperature_tmin:
       mission: agera5
       source: agera5
-    
-    relative_humidity:
+
+    vapour_pressure:
       mission: agera5
       source: agera5
-      time: "12_00"
+
+    wind_speed:
+      mission: agera5
+      source: agera5
 
 SPATIAL_INFO:
   spatial_file: 'data/country.shp'
@@ -33,7 +32,7 @@ GENERAL:
   suffix: 'hnd'
   export_as_netcdf: True
   ncores: 10
+  version: '2_0'
 
 PATHS:
   output_path: "weather/"
-
