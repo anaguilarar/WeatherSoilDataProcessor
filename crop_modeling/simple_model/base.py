@@ -515,10 +515,13 @@ class PySimpleModel(ModelBase):
         return f, ax
 
     
-    def from_datacube_to_files(self, xrdata: xarray.Dataset, 
+    def from_datacube_to_files(self,
+        xrdata: xarray.Dataset = None,
+        xrdata_path: str = None,
         data_source: str = 'climate',
         target_crs: str = 'EPSG:4326',
         group_by: Optional[str] = None,
+        group_by_layer: Optional[np.ndarray] = None,
         group_codes: Optional[dict] = None,
         outputpath: Optional[str] = None
     ) -> None:
@@ -527,14 +530,18 @@ class PySimpleModel(ModelBase):
 
         Parameters
         ----------
-        xrdata : Any
-            Input datacube for processing.
+        xrdata : xarray.Dataset, optional
+                Input xarray Dataset to be summarized. Required if `xrdata_path` is not provided.
+        xrdata_path : str, optional
+                Path to a NetCDF file containing the dataset. Used if `xrdata` is not passed.
         data_source : str, optional
             Type of data source ('climate', 'dem', or 'soil'), by default 'climate'.
         target_crs : str, optional
             Target coordinate reference system, by default 'EPSG:4326'.
         group_by : str, optional
             Grouping parameter for the data, by default None.
+        group_by_layer : Optional[np.ndarray], optional
+            Array with the categories data for grouping
         group_codes : dict, optional
             Group codes for classification, by default None.
         outputpath : str, optional
@@ -544,13 +551,13 @@ class PySimpleModel(ModelBase):
         outputpath = outputpath if outputpath else 'tmp'
         
         if data_source == 'climate':
-            weatherprocessor = SMWeather(xrdata)
-            weatherprocessor(depth_var_name = 'date', group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            weatherprocessor = SMWeather(xrdata, xrdata_path)
+            weatherprocessor(depth_var_name = 'date', group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
             
         if data_source == 'dem':
-            demprocessor = SMDEM(xrdata)
-            demprocessor(group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            demprocessor = SMDEM(xrdata, xrdata_path)
+            demprocessor(group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
 
         if data_source == 'soil':        
-            soilprocessor = SMSoil(xrdata)
-            soilprocessor(depth_var_name = 'depth', group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            soilprocessor = SMSoil(xrdata, xrdata_path)
+            soilprocessor(depth_var_name = 'depth', group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)

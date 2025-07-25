@@ -249,16 +249,20 @@ class TableDataTransformer(ABC):
     Subclasses must implement the specific functionality required for their data type.
     """
 
-    def __init__(self, xrdata: xarray.Dataset):
+    def __init__(self, xrdata: xarray.Dataset = None, xrdata_path:str = None):
         """
         Initialize the CAFSP_transformer instance.
 
         Parameters
         ----------
-        xrdata : xarray.Dataset
-            The input dataset to be processed.
+        xrdata : xarray.Dataset, optional
+                Input xarray Dataset to be processed. Required if `xrdata_path` is not provided.
+            xrdata_path : str, optional
+                Path to a NetCDF file containing the dataset. Used if `xrdata` is not passed.
+
         """
         self.xrdata = xrdata
+        self.xrdata_path = xrdata_path
 
     @property
     @abstractmethod
@@ -274,6 +278,7 @@ class TableDataTransformer(ABC):
     def __call__(
         self,
         group_by: Optional[str] = None,
+        group_by_layer: Optional[np.ndarray] = None,
         depth_var_name: Optional[str] = None,
         codes: Optional[Dict[int, str]] = None,
         target_crs: str = "EPSG:4326",
@@ -286,6 +291,9 @@ class TableDataTransformer(ABC):
         ----------
         group_by : str, optional
             Column to group the data by. If None, data will be grouped into a single group.
+        group_by_layer : np.ndarray, optional
+            a numpy array indicating the group category for each spatial location
+        
         depth_var_name : str, optional
             Name of the depth dimension, by default None.
         codes : dict, optional
@@ -296,7 +304,7 @@ class TableDataTransformer(ABC):
             Path to save the output CSV files.
         """
         dfdata = summarize_datacube_as_df(
-            self.xrdata, dimension_name=depth_var_name, group_by=group_by, project_to=target_crs
+            xrdata = self.xrdata, xrdata_path= self.xrdata_path, dimension_name=depth_var_name, group_by=group_by,group_by_layer = group_by_layer,  project_to=target_crs
         )
         
         if not group_by:

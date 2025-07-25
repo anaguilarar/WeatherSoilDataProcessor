@@ -143,10 +143,13 @@ class PyCAF(ModelBase):
         }
         
         
-    def from_datacube_to_files(self, xrdata: xarray.Dataset, 
+    def from_datacube_to_files(self, 
+        xrdata: xarray.Dataset = None,
+        xrdata_path: str = None,
         data_source: str = 'climate',
         target_crs: str = 'EPSG:4326',
         group_by: Optional[str] = None,
+        group_by_layer: Optional[np.ndarray] = None,
         group_codes: Optional[dict] = None,
         outputpath: Optional[str] = None
     ) -> None:
@@ -155,14 +158,18 @@ class PyCAF(ModelBase):
 
         Parameters
         ----------
-        xrdata : Any
-            Input datacube for processing.
+        xrdata : xarray.Dataset, optional
+                Input xarray Dataset to be summarized. Required if `xrdata_path` is not provided.
+        xrdata_path : str, optional
+                Path to a NetCDF file containing the dataset. Used if `xrdata` is not passed.
         data_source : str, optional
             Type of data source ('climate', 'dem', or 'soil'), by default 'climate'.
         target_crs : str, optional
             Target coordinate reference system, by default 'EPSG:4326'.
         group_by : str, optional
             Grouping parameter for the data, by default None.
+        group_by_layer : Optional[np.ndarray], optional
+            Array with the categories data for grouping
         group_codes : dict, optional
             Group codes for classification, by default None.
         outputpath : str, optional
@@ -172,16 +179,16 @@ class PyCAF(ModelBase):
         outputpath = outputpath if outputpath else 'tmp'
         
         if data_source == 'climate':
-            cafweather = CAFWeather(xrdata)
-            cafweather(depth_var_name = 'date', group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            cafweather = CAFWeather(xrdata,xrdata_path)
+            cafweather(depth_var_name = 'date', group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
             
         if data_source == 'dem':
-            cafdem = CAFDEM(xrdata)
-            cafdem(group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            cafdem = CAFDEM(xrdata,xrdata_path)
+            cafdem(group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
 
         if data_source == 'soil':        
-            cafsoil = CAFSoil(xrdata)
-            cafsoil(depth_var_name = 'depth', group_by= group_by, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
+            cafsoil = CAFSoil(xrdata,xrdata_path)
+            cafsoil(depth_var_name = 'depth', group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs)
 
     def _calculate_total_days(self):
         

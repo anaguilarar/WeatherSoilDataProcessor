@@ -3,13 +3,14 @@ import numpy as np
 import pandas as pd
 import pickle
 import os
-import rasterio as rio
+import rasterio
 import shutil
+from pathlib import Path
 
 from omegaconf import OmegaConf
 from tqdm import tqdm
 from typing import Dict, Optional, Union, Tuple
-from pathlib import Path
+import xarray
 
 from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset, summarize_datacube_as_df, model_selection
 from .utils.u_soil import get_layer_texture, get_soil_datacube
@@ -20,9 +21,26 @@ from spatialdata.gis_functions import masking_rescaling_xrdata, list_tif_2xarray
 from spatialdata.xr_dict import CustomXarray, from_dict_toxarray
 
 import concurrent.futures
-
+import copy
 import logging
 
+def create_texture_layer(soil_dc: xarray.Dataset = None, soil_dc_path: str = None, engine: str = 'netcdf4', texture_layer_name:str = 'texture', output_fn:str = None):
+    def export_file(soilref, output_fn):
+        #grouplayer = copy.deepcopy(soilref)
+        soilref.rio.to_raster(output_fn)
+        
+    if soil_dc_path:
+        assert os.path.exists(soil_dc_path), 'The provided path does not exist'
+        with xarray.open_dataset(soil_dc_path, engine= engine)  as soil_dc:
+            soil_txt = get_layer_texture(soil_dc.isel(depth = 0), texture_name=texture_layer_name)[texture_layer_name]
+            if output_fn: export_file(soil_txt, output_fn)
+            return soil_txt
+        
+    elif soil_dc is not None:
+        soil_txt = get_layer_texture(soil_dc.isel(depth = 0), texture_name=texture_layer_name)
+        if output_fn: export_file(soil_txt, output_fn)
+        return soil_txt
+        
 def reproject_xarray(xrdata, target_crs, src_crs = None):
     if src_crs is None:
         try:
@@ -33,8 +51,6 @@ def reproject_xarray(xrdata, target_crs, src_crs = None):
     assert src_crs is not None, "Please provide the source crs"
                         
     return xrdata.rio.write_crs(src_crs).rio.reproject(target_crs)
-
-import xarray
 
 def create_yield_raster_single_time_window(ref_raster, model_data, ycol_name ='HWAH', datecol_name = 'PDAT'):
     
@@ -145,16 +161,6 @@ def get_roi_data(roi: gpd.GeoDataFrame,
 
     return weather_datacube_m, soil_datacube_m
 
-
-def add_layer_texture_to_datacubes(weather_dc, soil_dc, dem_dc = None):
-        weatherdatavars = list(weather_dc.data_vars.keys())
-        soilref = get_layer_texture(soil_dc.isel(depth = 0))
-        # merge texture to weather and soil
-        weather_dc = xarray.merge([weather_dc,soilref])[weatherdatavars+ ['texture']]
-        soil_dc = xarray.merge([soil_dc,soilref['texture']])[list(soil_dc.data_vars.keys())+ ['texture']]
-        if dem_dc is not None:
-            dem_dc = xarray.merge([dem_dc,soilref['texture']])[list(dem_dc.data_vars.keys())+ ['texture']]
-        return weather_dc, soil_dc, dem_dc
 
     
 class SpatialData():
@@ -523,16 +529,14 @@ class SpatialCM():
         if export_spatial_data:
             self.export_spatialdata_asnc(weatherm, soilm, demm)
             
-        return weatherm, soilm, demm 
+        del weatherm, soilm, demm 
     
     def create_roi_sp_data(self, roi_index: Optional[int] = None,
         roi: Optional[gpd.GeoDataFrame] = None,
         crs: str = "EPSG:4326",
         group_codes: Optional[dict] = None,
-        create_group_splayer = False,
         export_spatial_data = False,
         verbose = False,
-        data_dict: dict = None
     ) -> Optional[Path]:
         """
         Extracts and processes data for a region of interest (ROI).
@@ -555,44 +559,57 @@ class SpatialCM():
             Path to the temporary directory containing DSSAT files, or None if no data is found.
         """
         
-        group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
+        self._group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
         self.country = self.config.GENERAL_INFO.get('country', None)
         
-        if data_dict is None:
+        if not os.path.exists(self._weather_tmppath) and not os.path.exists(self._soil_tmppath):
             ## get data
-            weatherm, soilm, demm = self._process_roi_sp_data(roi = roi, roi_index= roi_index, export_spatial_data=export_spatial_data, verbose=verbose)
-        else:
-            weatherm, soilm, demm = data_dict['weather'], data_dict['soil'], data_dict['dem']
-
-        if group_by == 'texture':
-            weatherm, soilm, demm = add_layer_texture_to_datacubes(weatherm, soilm, demm)
+            self._process_roi_sp_data(roi = roi, roi_index= roi_index, export_spatial_data=export_spatial_data, verbose=verbose)
+        
+        if self._group_by == 'texture':
+            create_texture_layer(soil_dc_path= self._soil_tmppath, 
+                    output_fn = os.path.join(self._tmp_path, '_'+self._group_by+'.tif'))
         
         if self.model.name == 'dssat':
             # export data as dssat files
-            self.process_dssat_files(weatherm, soilm, group_by, create_group_splayer, group_codes, crs)
+            self.process_dssat_files(group_codes, crs = crs)
+            
         if self.model.name in ['caf', 'simple_model']:
-            if create_group_splayer: self.group_spatial_layer(soilm)
-            for data, datatype in zip([weatherm, soilm, demm],['climate', 'soil', 'dem']):
-                if data is not None:
-                    self.model.from_datacube_to_files(data, data_source= datatype, target_crs=crs, group_by = group_by, group_codes = group_codes,
+            group_bylayer = self._get_group_layer() if self._group_by else None
+            for data_path, datatype in zip([self._weather_tmppath, self._soil_tmppath, self._dem_tmppath],['climate', 'soil', 'dem']):
+                if data_path is not None:
+                    self.model.from_datacube_to_files(xrdata_path = data_path, data_source= datatype, target_crs=crs, group_by = self._group_by, group_by_layer = group_bylayer, group_codes = group_codes,
                                                 outputpath= self._tmp_path)
                 
         return self._tmp_path
     
-    def process_dssat_files(self, weatherm, soilm, group_by, create_group_splayer, group_codes, crs: str = "EPSG:4326"):
-        pixel_scale =  group_by == 'pixel'
+    def _get_group_layer(self, project_to: str = "EPSG:4326"):
+        
+        if self._group_by:
+            with rasterio.open(os.path.join(self._tmp_path, '_'+self._group_by+'.tif')) as src:
+                group_bylayer = src.read()
+            del src
+            
+            if project_to: 
+                self.group_spatial_layer(project_to)
+                
+        return group_bylayer
+    
+    def process_dssat_files(self, group_codes, crs: str = "EPSG:4326"):
+        pixel_scale =  self._group_by == 'pixel'
 
         if not pixel_scale:
-            if group_by and create_group_splayer: self.group_spatial_layer(soilm)
+            
+            group_bylayer = self._get_group_layer(project_to=crs) if self._group_by else None
                 
-            for data, datatype in zip([weatherm, soilm],['climate', 'soil']):
+            for data_path, datatype in zip([self._weather_tmppath, self._soil_tmppath],['climate', 'soil']):
                 
                 dim_name = 'date' if datatype == 'climate' else 'depth'
-                dfdata = summarize_datacube_as_df(data, dimension_name= dim_name, group_by = group_by, 
-                                                project_to= crs, pixel_scale = pixel_scale)
+                dfdata = summarize_datacube_as_df(xrdata_path = data_path, dimension_name= dim_name, group_by = self._group_by, group_by_layer = group_bylayer,
+                                                project_to= crs, pixel_scale = False)
                 
                 self.model.from_datacube_to_files(dfdata, data_source=datatype, 
-                                                    group_by = group_by, 
+                                                    group_by = self._group_by, 
                                                     group_codes = group_codes,
                                                     outputpath= self._tmp_path,
                                                     country = self.country.upper(),
@@ -600,7 +617,7 @@ class SpatialCM():
             self.check_dssat_env_paths()
                 
         if pixel_scale:
-            xrref, pxs_withdata = self.create_env_variables_at_pixellevel(weatherm, soilm, target_crs =crs)
+            xrref, pxs_withdata = self.create_env_variables_at_pixellevel(target_crs =crs)
             pd.DataFrame(pxs_withdata, columns = ['pixel','x','y']).to_csv(os.path.join(self._tmp_path, 'pixel_coords.csv'))
             xrref[list(xrref.data_vars)[0]].rio.to_raster(os.path.join(self._tmp_path, 'ref_raster.tif'))
             
@@ -618,7 +635,7 @@ class SpatialCM():
                                                 sub_working_path = str(idpx), verbose = False)
         return x, y
     
-    def create_env_variables_at_pixellevel(self, weatherm, soilm, target_crs = "EPSG:4326"):
+    def create_env_variables_at_pixellevel(self, target_crs = "EPSG:4326"):
         """
         create environment variables for running crop models at pixel level
 
@@ -633,7 +650,8 @@ class SpatialCM():
             
         """
         #reproject
-        
+        weatherm
+        soilm
         if target_crs:
             soilm = soilm.rio.reproject(target_crs)
             weatherm = weatherm.rio.reproject(target_crs)
@@ -707,15 +725,18 @@ class SpatialCM():
             
             self.model._process_paths = smallest_path
             
-    def group_spatial_layer(self, soildata):
-        group_by = self.config.SPATIAL_INFO.get('aggregate_by', None)
-        grouplayer = soildata.isel(depth = 0)[group_by]
-        grouplayer = grouplayer.drop_vars('depth')
-        try:
-            grouplayer = grouplayer.rio.reproject('EPSG:4326')
-            grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{group_by}.tif'))
-            
-        except:
-            grouplayer = reproject_xrdata(grouplayer, 'EPSG:4326')
-            grouplayer = grouplayer.rio.write_crs('EPSG:4326')
-            grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{group_by}.tif'))
+    def group_spatial_layer(self, target_crs: str = "EPSG:4326"):
+        import rioxarray as rio
+        with rio.open_rasterio(os.path.join(self._tmp_path, '_'+self._group_by+'.tif')) as group_layer:
+
+            try:
+                grouplayer = group_layer.rio.reproject(target_crs)
+                grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{self._group_by}.tif'))
+                
+            except:
+                grouplayer = reproject_xrdata(group_layer, target_crs)
+                grouplayer = grouplayer.rio.write_crs(target_crs)
+                grouplayer.rio.to_raster(os.path.join(self._tmp_path, f'{self._group_by}.tif'))
+                
+                
+        del grouplayer, group_layer
