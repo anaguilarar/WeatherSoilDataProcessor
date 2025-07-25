@@ -635,7 +635,7 @@ class SpatialCM():
                                                 sub_working_path = str(idpx), verbose = False)
         return x, y
     
-    def create_env_variables_at_pixellevel(self, target_crs = "EPSG:4326"):
+    def create_env_variables_at_pixellevel(self, target_crs = "EPSG:4326", engine: str = 'netcdf4' ):
         """
         create environment variables for running crop models at pixel level
 
@@ -649,9 +649,10 @@ class SpatialCM():
             Target coordinate reference system (CRS) for reprojecting data, by default "EPSG:4326".
             
         """
+        
+        weatherm = xarray.open_dataset(self._weather_tmppath, engine = engine)
+        soilm = xarray.open_dataset(self._soil_tmppath, engine = engine)
         #reproject
-        weatherm
-        soilm
         if target_crs:
             soilm = soilm.rio.reproject(target_crs)
             weatherm = weatherm.rio.reproject(target_crs)
@@ -682,7 +683,7 @@ class SpatialCM():
                     except Exception as exc:
                             print(f"Request for treatment {idpx} generated an exception: {exc}")
                     pbar.update(1)
-                    
+        del soilm, weatherm
         self.check_dssat_env_paths()
         return xrref, processed_pxs
 
