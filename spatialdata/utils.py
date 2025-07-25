@@ -292,23 +292,25 @@ def read_compressed_xarray(input_filepath: str, output_path:str = None, engine: 
     
     with xarray.open_dataset(output_filepath, engine = engine) as ds:
         data = ds.copy()
-        
-        data = data.astype(float)
-        scale_values_factor = data.attrs['scale_values_factor']
+    
+    del ds    
+    
+    data = data.astype(float)
+    scale_values_factor = data.attrs['scale_values_factor']
 
-        if data.attrs.get('dtype', None):
-            data.attrs['dtype'] = 'float'
-        
-        data = data/scale_values_factor
-        nodata = data.attrs.get('nodata', None)
-        if nodata:
-            data.attrs['nodata'] = nodata/scale_values_factor
-            for k in data.data_vars.keys():
-                data[k] = data[k].where(data[k] != nodata/scale_values_factor, np.nan)
+    if data.attrs.get('dtype', None):
+        data.attrs['dtype'] = 'float'
+    
+    data = data/scale_values_factor
+    nodata = data.attrs.get('nodata', None)
+    if nodata:
+        data.attrs['nodata'] = nodata/scale_values_factor
+        for k in data.data_vars.keys():
+            data[k] = data[k].where(data[k] != nodata/scale_values_factor, np.nan)
     if update_file:
         encoding = set_encoding(data)
         data.to_netcdf(output_filepath, encoding = encoding, engine = engine)
         
-    return data
+    del data
 
 
