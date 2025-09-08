@@ -232,9 +232,13 @@ class CHIRPS_download:
     """
 
 
-    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05') -> None:
+    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05', version = 'v2.0') -> None:
         self._frequency = frequency
         self.resolution = sp_resolution
+        self.version = version
+        #self._url = if ver
+        #TODO: implement version 3 options era https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/ERA5/2000/
+        #                                  IMERGLATE https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/IMERGlate-v07/
 
     def set_url(self, year, date):
 
