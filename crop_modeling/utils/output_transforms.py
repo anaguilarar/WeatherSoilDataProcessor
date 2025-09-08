@@ -127,7 +127,7 @@ def export_weather_by_years(weather_data, path):
         fn.write(', '.join([str(i) for i in years]).encode())
 
 
-def export_data_ascsv(processed_sims, output_data, crop, tmp_path, model_name, weather_variables2export = ['date', 'tmin', 'tmax', 'rain', 'srad'], group_by = 'texture'):
+def export_data_ascsv(processed_sims, output_data, crop, tmp_path, model_name, weather_variables2export = ['date', 'tmin', 'tmax', 'rain', 'srad'], group_by = 'texture', export_data = True):
     model_columns = ColumnNames(model_name)
     completedgroups = [k for k,v in processed_sims.items() if v]
     # export weather data
@@ -140,8 +140,9 @@ def export_data_ascsv(processed_sims, output_data, crop, tmp_path, model_name, w
     else:
         columnames = [v for v in model_columns.weather_columns.values()] 
     weather_data = weather_data[columnames]
-    weather_data.to_csv(os.path.join(tmp_path, 'weather.csv'), index =False)
-    export_weather_by_years(weather_data, tmp_path)
+    if export_data:
+        weather_data.to_csv(os.path.join(tmp_path, 'weather.csv'), index =False)
+        export_weather_by_years(weather_data, tmp_path)
     
     # export yield data
     date_colname, y_colname = model_columns.growth_colnames['date'], model_columns.growth_colnames['yield']
@@ -153,8 +154,11 @@ def export_data_ascsv(processed_sims, output_data, crop, tmp_path, model_name, w
         potentialyield_data.append(dftmp)
  
     columnames = [v for k, v in model_columns.growth_colnames.items()]
-    pd.concat(potentialyield_data)[columnames + [group_by]].to_csv(os.path.join(tmp_path, f'{crop}_potential_yield.csv'))
-    
+    if export_data:
+        pd.concat(potentialyield_data)[columnames + [group_by]].to_csv(os.path.join(tmp_path, f'{crop}_potential_yield.csv'))
+    else:
+        return pd.concat(potentialyield_data)[columnames + [group_by]]
+        
     
 
 def oni_season(dates: pd.DatetimeIndex) -> list:
@@ -307,11 +311,15 @@ def yield_data_summarized(yield_data, groupp_by = 'TRNO', date_column:str = 'PDA
     return historical
 
 
-def coffee_yield_data_summarized(yield_data, date_column:str = 'HDAT', yield_column: str = 'harvDM_f_hay', n_cycle_column = 'n_cycle'):
+def coffee_yield_data_summarized(yield_data, date_column:str = 'HDAT', yield_column: str = 'harvDM_f_hay', n_cycle_column = 'n_cycle', harvest_column = None):
+    
     datatoconcatenate = []
     for n_cycle, subset_cycle in yield_data.groupby([n_cycle_column]):
-        
-        subset_cycle['date'] = subset_cycle[date_column].apply(lambda x:  datetime.strptime(x, '%Y-%m-%d'))
+        if isinstance(subset_cycle[date_column].values[0], str):
+            subset_cycle['date'] = subset_cycle[date_column].apply(lambda x:  datetime.strptime(x, '%Y-%m-%d'))
+        else:
+            subset_cycle['date'] = subset_cycle[date_column]
+            
         years = subset_cycle['date'].dt.year
         start_year, end_year = np.min(years), np.max(years)
         
@@ -325,6 +333,10 @@ def coffee_yield_data_summarized(yield_data, date_column:str = 'HDAT', yield_col
         daytoflower = subset_cycle['DayFl']*np.max(subset_cycle[yield_column])//2
         daytoflower[daytoflower == 0] = np.nan
         subset_cycle['daytoflower'] = daytoflower
+        if harvest_column:
+            harvestday = subset_cycle[harvest_column]*np.max(subset_cycle[yield_column])//2
+            harvestday[harvestday == 0] = np.nan
+            subset_cycle['hdat'] = harvestday
         subset_cycle['period'] = f'{start_year} - {end_year}'
         datatoconcatenate.append(subset_cycle)
             

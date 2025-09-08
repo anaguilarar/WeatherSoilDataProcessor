@@ -210,7 +210,7 @@ class PyCAF(ModelBase):
         """
         return self._paremeters.iloc[:,1].values
 
-    def change_parameters(self, parameters_to_modify: Dict[str, float]) -> pd.DataFrame:
+    def change_parameters(self, parameters_to_modify: Dict[str, float], verbose = True) -> pd.DataFrame:
         """
         Modifies specified parameters.
 
@@ -230,8 +230,8 @@ class PyCAF(ModelBase):
             if k in self._paremeters.name.values:
                 self._paremeters.loc[self._paremeters.name==k,"1"] = v
                 paramschanged.append(k)
-        
-        print(f'Folowing parameters were changed : {paramschanged}')
+        if verbose:
+            print(f'Folowing parameters were changed : {paramschanged}')
         return self._paremeters
     
     def set_parameters(self, file_path: Optional[str] = None) -> pd.DataFrame:
@@ -255,7 +255,7 @@ class PyCAF(ModelBase):
             
         return self._paremeters
     
-    def set_soil_parameters(self, soil_file_path: str, depth: str = '5-15') -> None:
+    def set_soil_parameters(self, soil_file_path: str, depth: str = '5-15', verbose = True) -> None:
         """
         Sets soil parameters based on the soil file and depth.
 
@@ -269,9 +269,9 @@ class PyCAF(ModelBase):
         
         soil_info = pd.read_csv(soil_file_path)
         som = soil_info.loc[soil_info.DEPTH == depth, 'CSOM0'].values[0]
-        self.change_parameters({'CSOM0': round(som,1)})
+        self.change_parameters({'CSOM0': round(som,1)}, verbose = verbose)
     
-    def set_location_parameters(self, dem_file_path: str) -> None:
+    def set_location_parameters(self, dem_file_path: str, verbose = True) -> None:
         """
         Sets location parameters (e.g., slope and latitude).
 
@@ -283,9 +283,12 @@ class PyCAF(ModelBase):
         dem_info = pd.read_csv(dem_file_path)
         slope = dem_info['SLOPE'].values[0]
         lat = dem_info['LAT'].values[0]
-        self.change_parameters({'SLOPE': round(slope), 'LAT': round(lat, 2)})
-        
-    def set_tree_parameters(self, species_name: str, tree_density: Optional[float] = None) -> None:
+        self.change_parameters({'SLOPE': round(slope), 'LAT': round(lat, 2)}, verbose = verbose)
+
+    def modify_plant_parameters(self, plant_parameters: Dict, verbose = True):
+        self.change_parameters(plant_parameters, verbose = verbose)
+
+    def set_tree_parameters(self, species_name: str, tree_density: Optional[float] = None, verbose = True) -> None:
         """
         Sets tree-related parameters.
 
@@ -304,7 +307,7 @@ class PyCAF(ModelBase):
         if tree_density is not None: tree_parameters['TREEDENS0'] = tree_density
         id_tree = 1
         parameters_to_modify = {'{}({})'.format(k, id_tree):v for k,v in tree_parameters.items()}
-        self.change_parameters(parameters_to_modify=parameters_to_modify)
+        self.change_parameters(parameters_to_modify=parameters_to_modify, verbose = verbose)
     
     def read_weather(self, weather_path: str, init_year: Optional[int] = None, init_doy: Optional[int] = None, ending_year: Optional[int] = None) -> np.ndarray:
         """
@@ -395,7 +398,7 @@ class PyCAF(ModelBase):
         
         return fert, coffee_prun, tree_prun, tree_thinning
     
-    def organize_env(self, n_cycle = None,  **kwargs) -> None:
+    def organize_env(self, n_cycle = None, verbose = True, **kwargs) -> None:
         """
         Organizes the environment and prepares for model execution.
 
@@ -418,8 +421,8 @@ class PyCAF(ModelBase):
             tmp_path = os.path.join(pathiprocess, f'_{n_cycle}') if n_cycle is not None else pathiprocess
             if not os.path.exists(tmp_path): os.mkdir(tmp_path)
             print(tmp_path)
-            self.set_soil_parameters(os.path.join(pathiprocess, 'cafsoil.csv'))
-            self.set_location_parameters(os.path.join(pathiprocess, 'cafdem.csv'))
+            self.set_soil_parameters(os.path.join(pathiprocess, 'cafsoil.csv'), verbose = verbose)
+            self.set_location_parameters(os.path.join(pathiprocess, 'cafdem.csv'), verbose = verbose)
             _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'), init_doy=doy, init_year=year, ending_year=end_year)
             self.write_run_config_file(tmp_path, **kwargs)
             
@@ -456,7 +459,7 @@ class PyCAF(ModelBase):
             Path to the CAF model DLL file, by default None.
         """
         config_info = self._dict_config_file(output_path, planting_date = planting_date, fert= fert, coffee_prun= coffee_prun, 
-                                             tree_prun =tree_prun, tree_thinning =tree_thinning, ndays= ndays, dll_path = dll_path, life_cycle_years= life_cycle_years)
+                                            tree_prun =tree_prun, tree_thinning =tree_thinning, ndays= ndays, dll_path = dll_path, life_cycle_years= life_cycle_years)
         
         config_path = os.path.join(output_path, 'config_file.yaml')
         #fn = os.path.join(self.path, 'experimental_file_config.yaml')
