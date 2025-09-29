@@ -248,9 +248,11 @@ def reproject_xrdata(xrsource, target_crs, xdim_name = 'x', ydim_name = 'y', res
 
 
 def get_boundaries_from_path(path, crs = None, round_numbers = False):
-    assert os.path.exists(path)
-
-    features = gpd.read_file(path)
+    ##assert os.path.exists(path)
+    try:
+        features = gpd.read_file(path)
+    except:
+        raise ValueError('Check path')
 
     if crs:
         features = features.to_crs(crs)
