@@ -345,6 +345,7 @@ class CHIRPS_download:
                 file_path_peryear[str(year)] = self.download_data_per_year(year, output_path, extent)
                 
         return file_path_peryear
+    
 def process_file(year_path_folder:str, filename:str, date:str, xdim_name:str, ydim_name:str, depthdim_name:str):
     """Reads and processes a single NetCDF file into an xarray.Dataset.
 
@@ -824,7 +825,7 @@ class ClimateDataDownload(object):
         
         if mission == 'chirps' and urlhost == 'chirps':
             chirps = CHIRPS_download()
-            return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = ncores)
+            return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = 0)
 
 
     def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax", ncores = 10, version = '2_0'):
