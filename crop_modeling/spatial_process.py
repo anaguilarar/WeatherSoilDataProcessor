@@ -84,7 +84,13 @@ def create_mlt_yield_raster(ref_raster, model_data, ycol_name = 'HWAH' ):
     dates = v.output_data().sort_values('PDAT')[['PDAT']]
     
     ref_raster_c = ref_raster.copy()
-    alldata = {k:v.output_data().sort_values('PDAT')[[ycol_name,'PDAT']] for k, v in model_data.items()}
+    alldata = {}
+    for i, (k, v) in enumerate(model_data.items()):
+        try:
+            alldata[k] = v.output_data().sort_values('PDAT')[[ycol_name,'PDAT']]
+        except:
+            continue
+        
     rasterlis = []
     for idate in tqdm(range(dates.PDAT.values.shape[0])):
         img_vals = create_date_raster(idate, ref_raster_c, alldata, ycol_name = ycol_name)
