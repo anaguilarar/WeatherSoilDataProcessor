@@ -16,7 +16,7 @@ SPATIAL_INFO:
   soil_path: soil/soil_mwi.nc
   weather_path: weather/weather_mwi_2000_2019.nc
   scale_factor: 1
-  roi: Thyolo
+  feature: Thyolo
 
 CROP:
   name: Maize
