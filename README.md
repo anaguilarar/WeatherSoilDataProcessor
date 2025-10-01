@@ -1,6 +1,6 @@
 # Spatial Crop Simulation:
 
-**WeatherSoilDataProcessor** is a Python-based tool designed to support site-specific crop growth simulation by integrating climate, soil, and management information. The repository allows users to (![Workflow of the WeatherSoilDataProcessor repository](.imgs/all_cm_eng.png)):
+**WeatherSoilDataProcessor** is a Python-based tool designed to support site-specific crop growth simulation by integrating climate, soil, and management information. The repository allows users to:
 
 * **Download and process data**: Retrieve historic climate data (precipitation, temperature, solar radiation) from AgEra5 and CHIRPS, and soil properties from SoilGrids.
 
@@ -15,7 +15,7 @@
 
 * **Visualize and export results**: Produce maps, tables, and DSSAT-compatible files for scientific and agricultural research applications.
 
-
+![Workflow of the WeatherSoilDataProcessor repository](_imgs\all_cm_eng.png)
 
 ## Installation
 
