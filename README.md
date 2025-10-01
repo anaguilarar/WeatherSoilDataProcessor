@@ -15,7 +15,11 @@
 
 * **Visualize and export results**: Produce maps, tables, and DSSAT-compatible files for scientific and agricultural research applications.
 
-![Workflow of the WeatherSoilDataProcessor repository](_imgs/all_cm_eng.png)
+<p align="center">
+  <img src="_imgs/all_cm_eng.png" alt="Workflow of the WeatherSoilDataProcessor repository" width="80%">
+  <br>
+  <em>Figure 1. Workflow of the WeatherSoilDataProcessor repository</em>
+</p>
 
 ## Installation
 
@@ -145,7 +149,7 @@ Example 3 [(dssat_spatial_crop_simulation)](https://github.com/anaguilarar/Weath
 
 Example 4 [(dssat_spatial_crop_simulation_pixel)](https://github.com/anaguilarar/WeatherSoilDataProcessor/blob/main/google_colab_examples/dssat_spatial_crop_simulation_pixel.ipynb):
 - Simulate crop yield potential using spatial data at pixel revel.
-- Map potential yields at 250 m spatial resolution (SoilGrids resolution).
+- Map potential yields at 500 m spatial resolution.
 - Export results for further analysis.
 
 
