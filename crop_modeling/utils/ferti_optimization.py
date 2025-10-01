@@ -19,7 +19,7 @@ from .model_base import ReporterBase
 from .output_transforms import yield_data_summarized, ColumnNames
 from .process import model_selection
 
-def fertilization_simulations(model, configuration, application_day, n_value, rm_simulation_folder = False, verbose = False, plantingWindow = 1):
+def fertilization_simulations(model, configuration, application_day, n_value, rm_simulation_folder = False, verbose = False, plantingWindow = 1, element_tooptimize = 'n'):
     configuration.MANAGEMENT.plantingWindow = plantingWindow
     if len(application_day) == 0:
         configuration.MANAGEMENT.fertilizer_schedule = None
@@ -27,7 +27,15 @@ def fertilization_simulations(model, configuration, application_day, n_value, rm
                                     's_not_fertilizer')
         
     else:
-        configuration.MANAGEMENT.fertilizer_schedule = {'days_after_planting': application_day, 'npk': [[i] for i in n_value]}
+        if element_tooptimize == 'n': 
+            npk_schedule = [[i] for i in n_value]
+        elif element_tooptimize == 'p':
+            npk_schedule = [[0,i,0] for i in n_value]
+        elif element_tooptimize == 'k':
+            npk_schedule = [[0,0,i] for i in n_value]
+            
+        configuration.MANAGEMENT.fertilizer_schedule = {'days_after_planting': application_day, 'npk': npk_schedule}
+        
         sim_experiment_path = os.path.join(model._process_paths[0],
                                     's'+'_'.join([str(i) for i in application_day]) +'_'+ '_'.join([str(i) for i in n_value]))
         
@@ -39,7 +47,18 @@ def fertilization_simulations(model, configuration, application_day, n_value, rm
                             dssat_path = configuration.GENERAL_INFO.get('dssat_path', None), remove_tmp_folder=rm_simulation_folder, 
                             sim_experiment_path= sim_experiment_path, verbose = verbose)
 
-def yield_simulation(model, configuration, application_day, n_value, rm_simulation_folder = False):
+def check_element_to_optimize(**kwargs):
+    
+    n_optimization = any(['n' in i for i in kwargs.keys()])
+    if n_optimization: return 'n'
+    p_optimization = any(['p' in i for i in kwargs.keys()])
+    if p_optimization: return 'p'
+    k_optimization = any(['k' in i for i in kwargs.keys()])
+    if k_optimization: return 'k'
+    
+    return None
+
+def yield_simulation(model, configuration, application_day, n_value, rm_simulation_folder = False, element_tooptimize = 'n'):
     
         colnames = ColumnNames(model.name)
         date_column = colnames.growth_colnames['date']
@@ -47,7 +66,7 @@ def yield_simulation(model, configuration, application_day, n_value, rm_simulati
         harvest_column = colnames.growth_colnames['hdate']
         nitrogen_uptake = colnames._nitrogen_uptake['dssat']['nitrogen_uptake']
 
-        fertilization_simulations(model, configuration, application_day, n_value, rm_simulation_folder=rm_simulation_folder)
+        fertilization_simulations(model, configuration, application_day, n_value, rm_simulation_folder=rm_simulation_folder, element_tooptimize = element_tooptimize)
         
         #model_data = update_data_using_path(self._tmp_path, model = self.model.name)
         if model.name == 'dssat':
@@ -70,60 +89,63 @@ def yield_simulation(model, configuration, application_day, n_value, rm_simulati
         return yield_data[target_column].values[0], n_uptake[nitrogen_uptake].values[0]
 
 def yield_predictions_withapplications(min_split_interval = 1, rm_simulation_folder = True, working_path = None, **kwargs):
-        
-        configuration = OmegaConf.load(os.path.join(working_path, 'crop_configuration.yaml'))
-        model_name = configuration.GENERAL_INFO.get('model', None)
-        model = model_selection(model_name, working_path)
-        model._process_paths = [working_path]
-        
-        day_values = []
-        napp_values = []
-        n = 1
-        ## get 
-        while True:
-            day_value = kwargs.get(f"day{n}", None)
-            napp_value = kwargs.get(f"n{n}", None)
-            n+=1
-            if day_value:
-                day_values.append(int(round(day_value)))
-                napp_values.append(int(round((napp_value))))
-            else:
-                break
-        
-        total_n = np.sum(napp_values)
-
-        if total_n < 0:
-            print("Warning: Total N applied is zero or negative. Setting NUE to 0.")
-            return 0
-        if len(day_values)>1:
-            for i in range(len(day_values)-1):
-                # Penalize invalid combinations by returning a very low NUE
-                if (day_values[i+1] <= day_values[i] + min_split_interval): return -1e6
-        
-        current_yield, n_uptake = yield_simulation(model, configuration, day_values, napp_values, 
-                                    rm_simulation_folder = rm_simulation_folder)
-        
-        if total_n == 0:
-            nue = -99
+    
+    element_tooptimize = check_element_to_optimize(**kwargs)
+    
+    assert element_tooptimize is not None, 'Only n p k are available to optimize'
+    configuration = OmegaConf.load(os.path.join(working_path, 'crop_configuration.yaml'))
+    model_name = configuration.GENERAL_INFO.get('model', None)
+    model = model_selection(model_name, working_path)
+    model._process_paths = [working_path]
+    
+    day_values = []
+    napp_values = []
+    n = 1
+    ## get 
+    while True:
+        day_value = kwargs.get(f"day{n}", None)
+        napp_value = kwargs.get(f"{element_tooptimize}{n}", None)
+        n+=1
+        if day_value:
+            day_values.append(int(round(day_value)))
+            napp_values.append(int(round((napp_value))))
         else:
-            nue = n_uptake/total_n
-        #print(f"Params: day1={day1_int}, n1={n1_int}, day2={day2_int}, n2={n2_int}, day3={day3_int}, n3={n3_int} -> Yield={current_yield:.0f}, Total N={total_n:.0f}, NUE={nue:.2f}")
-        # reporter
-        if len(day_values)>0:
-            daysdict = {f'day_{i+1}': int(d) for i, d in enumerate(day_values)}
-            ndict = {f'n_{i+1}': int(n) for i, n in enumerate(napp_values)}
-            daysdict.update(ndict)
-            
-        else:
-            daysdict = {'day_1': 0, 'n_1': 0}
-        
-        
-        daysdict.update({'nue': nue,
-                    'total_n': total_n,
-                    'crop_yield': current_yield})
-        
+            break
+    
+    total_n = np.sum(napp_values)
 
-        return current_yield
+    if total_n < 0:
+        print(f"Warning: Total {element_tooptimize} applied is zero or negative.")
+        return 0
+    if len(day_values)>1:
+        for i in range(len(day_values)-1):
+            # Penalize invalid combinations by returning a very low NUE
+            if (day_values[i+1] <= day_values[i] + min_split_interval): return -1e6
+    
+    current_yield, n_uptake = yield_simulation(model, configuration, day_values, napp_values, 
+                                rm_simulation_folder = rm_simulation_folder, element_tooptimize = element_tooptimize)
+    
+    if total_n == 0:
+        nue = -99
+    else:
+        nue = n_uptake/total_n
+    #print(f"Params: day1={day1_int}, n1={n1_int}, day2={day2_int}, n2={n2_int}, day3={day3_int}, n3={n3_int} -> Yield={current_yield:.0f}, Total N={total_n:.0f}, NUE={nue:.2f}")
+    # reporter
+    if len(day_values)>0:
+        daysdict = {f'day_{i+1}': int(d) for i, d in enumerate(day_values)}
+        ndict = {f'n_{i+1}': int(n) for i, n in enumerate(napp_values)}
+        daysdict.update(ndict)
+        
+    else:
+        daysdict = {'day_1': 0, f'{element_tooptimize}1': 0}
+    
+    
+    daysdict.update({'nue': nue,
+                f'total_{element_tooptimize}': total_n,
+                'crop_yield': current_yield})
+    
+
+    return current_yield
     
 class FertilizerBayesian(SpatialCM):
     """

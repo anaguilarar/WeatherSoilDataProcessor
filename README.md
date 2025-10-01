@@ -1,15 +1,21 @@
 # Spatial Crop Simulation:
 
-**WeatherSoilDataProcessor** is a Python-based tool designed for downloading, processing, and transforming weather and soil data for site-specific crop modeling. The repository enables users to create multi-temporal data cubes for weather variables such as precipitation, temperature, and solar radiation, as well as download and process soil data. With built-in support for interactive visualizations and data export. 
-capabilities, this tool is ideal for scientific and agricultural research applications.
+**WeatherSoilDataProcessor** is a Python-based tool designed to support site-specific crop growth simulation by integrating climate, soil, and management information. The repository allows users to (![Workflow of the WeatherSoilDataProcessor repository](.imgs/all_cm_eng.png)):
 
-## Features
-* **Weather Data Downloads**: Automatically fetch historical weather data from CHIRPS and AgEra5.
-* **Soil Data Downloads**: Automatically fetch and download soil data from SoilGrids.
-* **DSSAT Format Conversion**: Convert processed weather and soil data into DSSAT-compatible format for easy integration into DSSAT crop modeling software.
+* **Download and process data**: Retrieve historic climate data (precipitation, temperature, solar radiation) from AgEra5 and CHIRPS, and soil properties from SoilGrids.
+
+* **Generate spatial data cubes**: Build multi-temporal weather datasets and multi-depth soil profiles tailored to a region of interest.
+
+* **Incorporate agronomic management**: Define crop, variety, sowing dates, and fertilizer management to set up realistic scenarios.
+
 * **Simulate potential yield using process-based crop models (PBCs)**: Simulate potential crop yield using process-based crop models and spatial data. Currently, two PBCs are available: 
   * [DSSAT](https://dssat.net/): A widely-used crop simulation model for various crops and farming systems.
   * [CAF2021](https://link.springer.com/article/10.1007/s10457-022-00755-6): An agroforestry model specifically designed to simulate coffee growth and its interaction with shade trees.
+  * [a SIMPLE crop model](https://www.sciencedirect.com/science/article/abs/pii/S1161030118304234): a simple generic crop model,that could be easily modified for any crop to simulate development, crop growth and yield. 
+
+* **Visualize and export results**: Produce maps, tables, and DSSAT-compatible files for scientific and agricultural research applications.
+
+
 
 ## Installation
 

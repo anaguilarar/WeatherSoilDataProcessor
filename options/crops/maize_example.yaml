@@ -1,0 +1,38 @@
+GENERAL_INFO: 
+  country: 'Malawi'
+  country_code: 'MWI' # crountry code
+  working_path: 'runs' # the model outputs will be located in this path
+  ncores: 10,
+  model: 'dssat'
+  bin_path: null
+  dssat_path: null
+
+
+SPATIAL_INFO:
+  geospatial_path: null
+  feature_name: 'shapeName'
+  adm_level: 2
+  aggregate_by : pixel
+  soil_path: soil/soil_mwi.nc
+  weather_path: weather/weather_mwi_2000_2019.nc
+  scale_factor: 1
+  roi: Thyolo
+
+CROP:
+  name: Maize
+  cultivar: 'IB1072'
+  cultivar_file: Null
+
+MANAGEMENT:
+  planting_date: '1991-03-01'
+  harvesting_date: Null
+  plantingWindow: 20
+  fertilizer_schedule: 
+    days_after_planting: [5]
+    npk: [[200,0,0]]
+  index_soilwat: 1
+  template: 'crop_modeling/dssat/exp_files/KEAG8104.MZX'
+
+
+  
+  
