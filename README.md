@@ -15,7 +15,7 @@
 
 * **Visualize and export results**: Produce maps, tables, and DSSAT-compatible files for scientific and agricultural research applications.
 
-![Workflow of the WeatherSoilDataProcessor repository](_imgs\all_cm_eng.png)
+![Workflow of the WeatherSoilDataProcessor repository](_imgs/all_cm_eng.png)
 
 ## Installation
 
