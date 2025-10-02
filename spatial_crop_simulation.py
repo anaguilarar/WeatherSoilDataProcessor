@@ -62,12 +62,12 @@ def simulate_roi(spatial_cm, feature_code):
         spatial_cm.model.set_up_management(crop=spatial_cm.crop, cultivar=spatial_cm.cultivar, **spatial_cm.config.MANAGEMENT)
 
         # run the simulation
-        dssath_path = spatial_cm.config.GENERAL_INFO.get('dssat_path', None)
+        dssat_path = spatial_cm.config.GENERAL_INFO.get('dssat_path', None)
         completed_sims = spatial_cm.model.run(spatial_cm.model.crop_code, crop=spatial_cm.crop,planting_window=spatial_cm.config.MANAGEMENT.plantingWindow,
                                         ncores = spatial_cm.config.GENERAL_INFO.ncores,
-                                            bin_path = spatial_cm.config.GENERAL_INFO.bin_path, remove_tmp_folder=True)
+                                            bin_path = spatial_cm.config.GENERAL_INFO.bin_path, dssat_path= dssat_path, remove_tmp_folder=True)
         
-        
+        print(completed_sims)
         refraster = rio.open_rasterio(os.path.join(spatial_cm._tmp_path,'ref_raster.tif'))
         model_data = update_dssat_data_using_path(spatial_cm._tmp_path)
 
