@@ -2,7 +2,7 @@ GENERAL_INFO:
   country: 'Malawi'
   country_code: 'MWI' # crountry code
   working_path: 'runs' # the model outputs will be located in this path
-  ncores: 10,
+  ncores: 10
   model: 'dssat'
   bin_path: null
   dssat_path: null

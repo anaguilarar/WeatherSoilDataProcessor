@@ -129,6 +129,64 @@ PATHS:
 
 ```
 
+###  Example: Running a Crop Simulation at Pixel Level
+
+This example demonstrates how to run a crop simulation for maize at pixel level using DSSAT. The configuration parameters are defined in a YAML file (options\crops\maize_example.yaml).
+
+The YAML file specifies:
+
+* **GENERAL_INFO**: country, working directory, number of CPU cores, and model type (e.g., dssat).
+
+* **SPATIAL_INFO**: paths to soil and weather data, administrative level, aggregation method (pixel), and region of interest.
+
+* **CROP**: crop type and cultivar details.
+
+* **MANAGEMENT**: agronomic management practices such as planting date, planting window, and fertilizer schedule.
+
+To run the simulation, execute the following command:
+
+```bash
+python spatial_crop_simulation.py --config options/crops/maize_example.yaml
+```
+
+Here’s an example of what your maize_example.yaml file should include:
+```yaml
+
+GENERAL_INFO: 
+  country: 'Malawi'
+  country_code: 'MWI' # crountry code
+  working_path: 'runs' 
+  ncores: 10,
+  model: 'dssat'
+  bin_path: null
+  dssat_path: null
+
+SPATIAL_INFO:
+  geospatial_path: null
+  feature_name: 'shapeName'
+  adm_level: 2
+  aggregate_by : pixel
+  soil_path: ../data/soil_mwi.nc
+  weather_path: ../data/weather_mwi_2000_2019.nc
+  scale_factor: 1
+  feature: Thyolo
+
+CROP:
+  name: Maize
+  cultivar: 'IB1072'
+  cultivar_file: Null
+
+MANAGEMENT:
+  planting_date: '1991-03-01'
+  harvesting_date: Null
+  plantingWindow: 20
+  fertilizer_schedule: 
+    days_after_planting: [5]
+    npk: [[200,0,0]]
+  index_soilwat: 1
+  template: 'crop_modeling/dssat/exp_files/KEAG8104.MZX'
+
+```
 ## Google Colab Examples
 
 You can explore the functionality of this repository using Google Colab notebooks located in the google colab examples folder:

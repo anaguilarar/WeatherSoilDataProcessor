@@ -31,8 +31,6 @@ def parse_args():
     return args
 
 def export_data(xrdata, fn):
-
-
     dcengine = 'netcdf4'
     encoding = set_encoding(xrdata)
     xrdata = check_crs_inxrdataset(xrdata)
@@ -70,8 +68,8 @@ def simulate_roi(spatial_cm, feature_code):
                                             bin_path = spatial_cm.config.GENERAL_INFO.bin_path, remove_tmp_folder=True)
         
         
-        refraster = rio.open_rasterio(os.path.join(completed_sims._tmp_path,'ref_raster.tif'))
-        model_data = update_dssat_data_using_path(completed_sims._tmp_path)
+        refraster = rio.open_rasterio(os.path.join(spatial_cm._tmp_path,'ref_raster.tif'))
+        model_data = update_dssat_data_using_path(spatial_cm._tmp_path)
 
         mlt_pot_yield = create_mlt_yield_raster(refraster, model_data, ycol_name='HWAH')
         summ_yield  = summarize_spatial_yields_by_time_window(mlt_pot_yield, 
@@ -83,7 +81,7 @@ def simulate_roi(spatial_cm, feature_code):
         
 
 def main():
-    logging.info("Starting to download data")
+    logging.info("Starting crop simulation")
     args = parse_args()
     
     # reading configuration
@@ -93,7 +91,7 @@ def main():
     cs = cm_configuration.GENERAL_INFO.country_code.upper()
 
     if cm_configuration.SPATIAL_INFO.get('geospatial_path', None) is None:
-        
+        logging.info(f".. Downloading spatial boundaries for {cs}")
         adm_level = cm_configuration.SPATIAL_INFO.adm_level
         url = f"https://www.geoboundaries.org/api/current/gbOpen/{cs}/ADM{adm_level}/"
         
