@@ -63,7 +63,7 @@
 @N GENERAL     NYERS NREPS START SDATE RSEED SNAME.................... SMODEL
  1 GE             23     1     S 83001  2150 DEFAULT                   CSYCA
 @N OPTIONS     WATER NITRO SYMBI PHOSP POTAS DISES  CHEM  TILL   CO2
- 1 OP              Y     N     N     N     N     N     N     Y     M
+ 1 OP              N     N     N     N     N     N     N     N     M
 @N METHODS     WTHER INCON LIGHT EVAPO INFIL PHOTO HYDRO NSWIT MESOM MESEV MESOL
  1 ME              M     M     E     H     S     V     R     1     G     R     2
 @N MANAGEMENT  PLANT IRRIG FERTI RESID HARVS

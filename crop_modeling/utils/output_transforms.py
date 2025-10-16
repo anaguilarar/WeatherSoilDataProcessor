@@ -54,6 +54,7 @@ class ColumnNames():
     
     _growth_column = {
             'dssat': {'date':'PDAT',
+                    'mdate':'MDAT',
                 'hdate':'HDAT',
                 'yield':'HWAH',
                 'number_of_cycle': 'TRNO'},

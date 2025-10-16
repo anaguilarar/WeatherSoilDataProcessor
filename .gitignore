@@ -3,11 +3,13 @@ model_configurations/
 cm_code.py
 weather/
 soil/
+sh_platform/
 dem/
 Py_DSSATTools/
 runs/
 modeladocultivo.py
 test.ipynb
+run.log
 spatialdata/__pycache__/climate_data.cpython-39.pyc
 spatialdata/__pycache__/data_cube_utils.cpython-39.pyc
 spatialdata/__pycache__/datacube.cpython-39.pyc
