@@ -641,7 +641,7 @@ class SpatialCM():
                                                 sub_working_path = str(idpx), verbose = False)
         return x, y
     
-    def create_env_variables_at_pixellevel(self, target_crs = "EPSG:4326", engine: str = 'netcdf4' ):
+    def create_env_variables_at_pixellevel(self, target_crs:str = "EPSG:4326", engine: str = 'netcdf4' ):
         """
         create environment variables for running crop models at pixel level
 
