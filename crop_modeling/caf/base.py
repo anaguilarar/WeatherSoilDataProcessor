@@ -1,6 +1,7 @@
-import numpy as np
-
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import numpy as np
 import pandas as pd
 import platform
 import subprocess
@@ -343,37 +344,102 @@ class PyCAF(ModelBase):
         
         return weather_data
 
-    
-    def run(self, n_cycles: Optional[int] = None, cwd: Optional[str] = None) -> None:
+    def run(
+        self,
+        n_cycles: Optional[int] = None,
+        cwd: Optional[str] = None,
+        max_workers: Optional[int] = None
+    ) -> dict:
         """
         Executes the CAF model using the configuration file.
-
-        Parameters
-        ----------
-        n_cycles : int
-            Coffee plant number of life cycles for running the model
-        cwd : str
-            Current working directory for running the model.
         """
-        
-        if cwd is None: cwd = MODULE_PATH
+
+        if cwd is None:
+            cwd = MODULE_PATH
+
         n_cycles = n_cycles or 1
         process_completed = {}
-        for n_path, pathiprocess in enumerate(self._process_paths):
+        if max_workers is None: max_workers = min(n_cycles, 4)
+        for pathiprocess in self._process_paths:
             file_path_pertr = {}
-            for n_cycle in range(n_cycles):  
-            
-                output_path = os.path.join(pathiprocess, f'_{n_cycle}')
-            
-                print('Rscript', './r_scripts/r_run_caf.R', os.path.join(output_path, 'config_file.yaml'))
-                subprocess.call(['Rscript', 'r_scripts/r_run_caf.R', 
-                                                os.path.join(output_path, 'config_file.yaml')], cwd=cwd)    
-                
-                file_path_pertr[str(n_cycle)] = check_exp_summary_name(output_path, pathiprocess, experiment_id = n_cycle, removeworking_path_folder = False)
-            
-            process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
-        
+
+            tasks = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                for n_cycle in range(n_cycles):
+                    tasks.append(
+                        executor.submit(
+                            self._run_single_cycle,
+                            pathiprocess,
+                            n_cycle,
+                            cwd
+                        )
+                    )
+
+                for future in as_completed(tasks):
+                    result = future.result()
+                    file_path_pertr.update(result)
+
+            process_completed[os.path.basename(pathiprocess)] = any(
+                v[list(v.keys())[0]] for v in file_path_pertr.values()
+            )
+
         return process_completed
+    
+    @staticmethod
+    def _run_single_cycle(
+        pathiprocess: str,
+        n_cycle: int,
+        cwd: str
+    ) -> Dict[str, dict]:
+        output_path = os.path.join(pathiprocess, f'_{n_cycle}')
+
+        cmd = [
+            'Rscript',
+            'r_scripts/r_run_caf.R',
+            os.path.join(output_path, 'config_file.yaml')
+        ]
+
+        subprocess.run(cmd, cwd=cwd, check=True)
+
+        result = check_exp_summary_name(
+            output_path,
+            pathiprocess,
+            experiment_id=n_cycle,
+            removeworking_path_folder=False
+        )
+
+        return {str(n_cycle): result}
+
+    # def run(self, n_cycles: Optional[int] = None, cwd: Optional[str] = None) -> None:
+    #     """
+    #     Executes the CAF model using the configuration file.
+
+    #     Parameters
+    #     ----------
+    #     n_cycles : int
+    #         Coffee plant number of life cycles for running the model
+    #     cwd : str
+    #         Current working directory for running the model.
+    #     """
+        
+    #     if cwd is None: cwd = MODULE_PATH
+    #     n_cycles = n_cycles or 1
+    #     process_completed = {}
+    #     for n_path, pathiprocess in enumerate(self._process_paths):
+    #         file_path_pertr = {}
+    #         for n_cycle in range(n_cycles):  
+            
+    #             output_path = os.path.join(pathiprocess, f'_{n_cycle}')
+            
+    #             print('Rscript', './r_scripts/r_run_caf.R', os.path.join(output_path, 'config_file.yaml'))
+    #             subprocess.call(['Rscript', 'r_scripts/r_run_caf.R', 
+    #                                             os.path.join(output_path, 'config_file.yaml')], cwd=cwd)    
+                
+    #             file_path_pertr[str(n_cycle)] = check_exp_summary_name(output_path, pathiprocess, experiment_id = n_cycle, removeworking_path_folder = False)
+            
+    #         process_completed[os.path.basename(pathiprocess)] = any([v[list(v.keys())[0]] for k,v in file_path_pertr.items()])
+        
+    #     return process_completed
     
     def set_up_management(self, management_config: Dict) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """
@@ -420,7 +486,6 @@ class PyCAF(ModelBase):
         for pathiprocess in self._process_paths:
             tmp_path = os.path.join(pathiprocess, f'_{n_cycle}') if n_cycle is not None else pathiprocess
             if not os.path.exists(tmp_path): os.mkdir(tmp_path)
-            print(tmp_path)
             self.set_soil_parameters(os.path.join(pathiprocess, 'cafsoil.csv'), verbose = verbose)
             self.set_location_parameters(os.path.join(pathiprocess, 'cafdem.csv'), verbose = verbose)
             _ = self.read_weather(os.path.join(pathiprocess, 'cafweather.csv'), init_doy=doy, init_year=year, ending_year=end_year)
