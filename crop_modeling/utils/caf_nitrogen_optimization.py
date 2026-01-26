@@ -16,68 +16,6 @@ from ..caf.management import prunningOrganizer, fertiOrganizer
 
 from spatialdata.soil_data import TEXTURE_CLASSES
 
-class SpatialCAF(fertiOrganizer):
-
-    def __init__(self, spatial_processor, planting_date, **kwargs):
-
-        self.spatial_processor = spatial_processor
-        self._colnames = ColumnNames(spatial_processor.model.name)
-
-        super().__init__(planting_date)
-
-
-    def ferti_days_after_flowering(self, flowering_dates: pd.DataFrame, days_of_application: List[float], n_amounts: List[float], nitrogen_factor = 1):
-        fertilization_dict = {}
-        for i in range(len(self.pdates)):
-            fl_df= flowering_dates.loc[flowering_dates.n_cycle == i+1]
-            fl_days = (fl_df[self._colnames.growth_colnames['date']] - self.pdates[i]).dt.days.values
-            total_fldays = len(fl_days)
-
-            updfertiday = np.zeros(len(fl_days)*len(days_of_application), dtype= float)
-            updamount = np.zeros(len(fl_days)*len(days_of_application), dtype= float)
-
-            for z, (day, amount) in enumerate(zip(days_of_application, n_amounts)):
-                ferti_day = np.array(fl_days) + (day*30)
-                updfertiday[total_fldays*z:(total_fldays*(z+1))] = ferti_day.tolist()
-                updamount[total_fldays*z:(total_fldays*(z+1))] = [amount*nitrogen_factor]*total_fldays
-
-            fertilization_dict[i+1] = [updfertiday.tolist(), updamount.tolist()]
-
-        return fertilization_dict
-
-
-    def get_flowering_dates(self, duration=None, remove_tmp_folders = True):
-
-
-        date_colname, fd_colname = self._colnames.growth_colnames['date'], self._colnames.growth_colnames['flowering_date']
-        n_cycle, crop_yield = self._colnames.growth_colnames['number_of_cycle'], self._colnames.growth_colnames['yield']
-        h_date = self._colnames.growth_colnames['hdate']
-
-        self.spatial_processor.config.MANAGEMENT.fertilization = self.fertilization_schedule([1,2],[0,0])
-        if duration is not None:
-            self.spatial_processor.config.MANAGEMENT = caf_coffeeplant_productioncycle(int(duration), self.spatial_processor.config.MANAGEMENT)
-
-        completed_sims = run_caf(self.spatial_processor)
-        model_data = update_data_using_path(self.spatial_processor._tmp_path, model = self.spatial_processor.model.name)
-        completed_sims = completed_sims if completed_sims is not None else {k:True for k, v in model_data.items()}
-
-        flowering_dates = {}
-        baseline_yields = {}
-        
-        for k, v in model_data.items():
-            flowering_dates_df = v.output_data().sort_values(date_colname)[[n_cycle, fd_colname, date_colname, crop_yield]]
-            harvested_yield_df = v.output_data().sort_values(date_colname)[[n_cycle, h_date, date_colname, crop_yield]]
-            
-            flowering_dates[k] = flowering_dates_df.loc[flowering_dates_df[fd_colname] != 0]
-            baseline_yields[k] = harvested_yield_df.loc[harvested_yield_df[h_date] != 0]
-            
-        if remove_tmp_folders:
-            for pathfolder in self.spatial_processor.model._process_paths:
-                for i in range(np.unique(flowering_dates[k][n_cycle].values).shape[0]):
-                    shutil.rmtree(os.path.join(pathfolder, f'_{i}'), ignore_errors=False, onerror=None)
-                    os.remove(os.path.join(pathfolder, f'output_{i}.csv'))
-
-        return flowering_dates, baseline_yields
     
 
 def caf_coffeeplant_productioncycle(production_years, management_configuration):
@@ -181,12 +119,10 @@ class SpatialCAF(fertiOrganizer):
         if remove_tmp_folders:
             for pathfolder in self.spatial_processor.model._process_paths:
                 for i in range(np.unique(flowering_dates[k][n_cycle].values).shape[0]):
-                    shutil.rmtree(os.path.join(pathfolder, f'_{i}'), ignore_errors=False, onerror=None)
+                    #shutil.rmtree(os.path.join(pathfolder, f'_{i}'), ignore_errors=False, onerror=None)
                     os.remove(os.path.join(pathfolder, f'output_{i}.csv'))
 
         return flowering_dates, baseline_yields
-
-
 
 
 NITROGEN_MODEL_MULTIPLIER = 10

@@ -12,6 +12,8 @@ from ..dssat.output import DSSATOutputData
 from ..simple_model.output import SimpleModelOutputData
 
 monthstring = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+ONI_DATA = pd.read_fwf('https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt')
+
 
 threemonth_dict = {
     'DJF': [12,1,2],
@@ -176,7 +178,6 @@ def oni_season(dates: pd.DatetimeIndex) -> list:
     list
         List of ONI classifications ('La Niña', 'El Niño', or 'Normal') for each date.
     """
-    oni_data = pd.read_fwf('https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt')
 
     yr = dates.dt.year.values
     month = dates.dt.month.values
@@ -184,7 +185,7 @@ def oni_season(dates: pd.DatetimeIndex) -> list:
     for idx in range(month.shape[0]):
         subset_year, subset_month = yr[idx], month[idx]
         oniseason = list(threemonth_dict.keys())[subset_month-1]
-        oniyear = oni_data.loc[oni_data.YR == subset_year]
+        oniyear = ONI_DATA.loc[ONI_DATA.YR == subset_year]
         anomaly = oniyear.loc[oniyear.SEAS == oniseason]['ANOM'].values[0]
         if anomaly<=-0.5: oni = 'La Niña'
         elif anomaly>=0.5: oni = 'El Niño'
@@ -193,6 +194,56 @@ def oni_season(dates: pd.DatetimeIndex) -> list:
         
     return onivalue
 
+def identify_enso_events(oni_data, target_dates):
+    """
+    Classifies a list of [Year, Month] pairs based on official ONI event rules.
+    """
+    # 1. Prepare ONI Data
+    df = pd.DataFrame(oni_data)
+    
+    # Identify qualifying periods (anomalies >= 0.5 or <= -0.5)
+    df['is_nino_thresh'] = False
+    df.loc[df['ANOM'] >= 0.5, 'is_nino_thresh'] = True
+    df['is_nina_thresh'] = False
+    df.loc[df['ANOM'] <= -0.5, 'is_nina_thresh'] = True
+    
+    
+    # Function to find streaks of at least 5 consecutive True values
+    def get_event_mask(series, min_len=5):
+        # Group consecutive identical values
+        groups = (series != series.shift()).cumsum()
+        # Count sizes and filter for those that meet the streak requirement
+        streak_counts = series.groupby(groups).transform('count')
+        return series & (streak_counts >= min_len)
+
+    df['Official_Nino'] = get_event_mask(df['is_nino_thresh'])
+    df['Official_Nina'] = get_event_mask(df['is_nina_thresh'])
+    
+    # 2. Map Month to ONI Season Label
+    # Seasons are centered on the target month (e.g., March = FMA)
+    month_to_season = {
+        1: 'DJF', 2: 'JFM', 3: 'FMA', 4: 'MAM', 5: 'AMJ', 6: 'MJJ',
+        7: 'JJA', 8: 'JAS', 9: 'ASO', 10: 'SON', 11: 'OND', 12: 'NDJ'
+    }
+    
+    results = []
+    for yr, mo in target_dates:
+        season_label = month_to_season[mo]
+        # Match year and season label in the ONI table
+        match = df[(df['YR'] == yr) & (df['SEAS'] == season_label)]
+        
+        if match.empty:
+            phase = "Data Missing"
+        elif match.iloc[0]['Official_Nino']:
+            phase = "El Niño"
+        elif match.iloc[0]['Official_Nina']:
+            phase = "La Niña"
+        else:
+            phase = "Neutral"
+        
+        results.append([yr, mo, season_label, phase])
+        
+    return pd.DataFrame(results, columns=['Year', 'Month', 'Season', 'Phase'])
 
 def add_oni_season_to_yield_data(yield_data: pd.DataFrame, group_by = 'TRNO', date_column:str = 'PDAT', yield_column: str = 'HWAM', harvest_column:str = 'HDAT'):
     """
