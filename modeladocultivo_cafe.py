@@ -84,6 +84,7 @@ def fertilization_set_up(application_month, n_ammount, n_years, planting_year):
     
 
 def organize_caf_fertilization_from_app(fert_input: List):
+    if len(fert_input) == 0: return None, None
     if not fert_input[0]['coffee_monthsaftertransplant'].isnumeric(): return None, None
     fert_item = fert_input
     days_list = []
