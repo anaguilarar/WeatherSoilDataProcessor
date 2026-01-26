@@ -8,6 +8,7 @@ dem/
 Py_DSSATTools/
 runs/
 modeladocultivo.py
+modeladocultivo_.py
 test.ipynb
 run.log
 spatialdata/__pycache__/climate_data.cpython-39.pyc

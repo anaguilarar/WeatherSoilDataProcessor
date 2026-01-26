@@ -5,6 +5,7 @@ import shutil
 from datetime import datetime
 from typing import List
 import json
+import logging
 
 import pandas as pd
 import numpy as np
@@ -15,7 +16,8 @@ from crop_modeling.utils.output_transforms import (update_data_using_path, expor
 from crop_modeling.caf.management import CAFManagement
 from crop_modeling.caf.output import CAFOutputData
 from crop_modeling.spatial_cm import SpatialCAF
-
+from crop_modeling.caf.files_export import CAFSoil
+from crop_modeling.utils.process import summarize_datacube_as_df
 
 from spatialdata.utils import read_compressed_xarray
 
@@ -30,6 +32,29 @@ def set_up_sim_environment(src_path, target_path):
     shutil.copy2(sl_path, target_path)
     shutil.copy2(os.path.join(src_path, 'cafweather.csv'), target_path)
 
+def extract_soil_data(spatial_processor, soil_variables, dimension_name: str, depth: str, group_by:str = None, project_to:str = "EPSG:4326",
+                    pixel_scale: bool = False, group_codes: List = None
+                    ):
+    
+    if not os.path.exists(spatial_processor._soil_tmppath) and os.path.exists(spatial_processor._weather_tmppath): return None
+    cafsoil = CAFSoil(xrdata_path = spatial_processor._soil_tmppath)
+    group_bylayer = spatial_processor._get_group_layer(project_to = None) ## avoid exporting the group layer again
+    dfdata = summarize_datacube_as_df(xrdata_path=spatial_processor._soil_tmppath, dimension_name= dimension_name, group_by = group_by, 
+                                    group_by_layer = group_bylayer,
+                                    project_to=  project_to, pixel_scale = pixel_scale)
+    dfdata = cafsoil.process_data(dfdata)
+    
+    variablestoexport = soil_variables
+    
+    if group_by is not None:
+        if group_codes is not None:
+            dfdata[group_by] = dfdata[group_by].apply(lambda x: group_codes[int(x)].replace(" ",""))
+            
+        variablestoexport = [group_by]+soil_variables
+        
+    dfdata = dfdata.loc[dfdata[dimension_name] == depth][variablestoexport]
+        
+    return dfdata
 
 def month_year(dates: pd.Series):
     months = dates.dt.month
@@ -79,9 +104,12 @@ def organize_caf_fertilization_from_app(fert_input: List):
 
 ## input params
 
-def main_caf_function(params_input):
+def main_caf_function(data_dict, config, messages = None):
     
-    data_dict = json.loads(params_input)
+    tmp_path =  data_dict["resultpath"]
+    logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s', filename=os.path.join(tmp_path, 'run.log'))
+
     crop = data_dict["crop"].lower()
     cultivar_id = data_dict["variety"].lower()
     duration = 7 if data_dict["duration"] == '' else int(data_dict["duration"]) if crop == 'coffee' else ""
@@ -89,9 +117,6 @@ def main_caf_function(params_input):
 
     fertilizationdata = json.loads(data_dict["fertilizationdata"]) if data_dict["fertilizationdata"] != "" else []
     app_days, n_amounts = organize_caf_fertilization_from_app(fertilizationdata)
-
-    config_path = f'model_configurations/crop_model_configuration_{crop}.yaml'
-    config = OmegaConf.load(config_path)
 
     village_info = config.SPATIAL_INFO.get('villages_folderpath', '')
 
@@ -113,6 +138,7 @@ def main_caf_function(params_input):
     cm_sp.config.MANAGEMENT = management_dict
 
     ## create spatial data
+    logging.info(messages[1])
     roi = cm_sp.geo_features.loc[cm_sp.geo_features['GEOCODIGO']==str(geocode)]
     roi_name = roi[cm_sp.config.SPATIAL_INFO.feature_name].values[0]
     cm_sp.set_up_folders(site = roi_name)
@@ -131,13 +157,16 @@ def main_caf_function(params_input):
         group_codes=TEXTURE_CLASSES,  # Codes for grouping data by texture
         export_spatial_data=not datauploaded
     )
-
+    soildata = extract_soil_data(cm_sp, soil_variables=["phh2o","som"], dimension_name='depth', depth='15-30', group_by='texture', group_codes=TEXTURE_CLASSES)
+    n_ammount = 0
     ## get flowering dates if there is any nitrogen application
     flowering_dates = None
+    logging.info(messages[2])
     if app_days is not None:
         flowering_dates, _ = cm_sp.get_flowering_dates(duration=duration, remove_tmp_folders = True, verbose= False)
         ## assuming that therie is not a big difference between localities with different 
         flowering_dates_df = flowering_dates[list(flowering_dates.keys())[0]]
+        n_ammount = np.sum(n_amounts)
         ferti_days_percycle = cm_sp.ferti_days_after_flowering(flowering_dates_df, app_days, n_amounts)
         for z in range(cm_sp.config.MANAGEMENT.n_cycles):
             print('---> cycle: ', z)
@@ -145,13 +174,19 @@ def main_caf_function(params_input):
             cm_sp.config.MANAGEMENT[f'cycle_treatment_{z+1}']['fertilization'] = ferti_cycle_schedule
             print(cm_sp.config.MANAGEMENT[f'cycle_treatment_{z+1}']['fertilization'])
     
+    logging.info(messages[3])
     completed_sims = cm_sp.run_caf(verbose=False)
     model_data = update_data_using_path(cm_sp._tmp_path, model = cm_sp.model.name)
     completed_sims = completed_sims if completed_sims is not None else {k:True for k, v in model_data.items()}
+    logging.info(messages[4])
     export_data_ascsv(completed_sims, model_data, cm_sp.crop.lower(), cm_sp._tmp_path, cm_sp.model.name, weather_variables2export = ['date', 'tmin', 'tmax', 'rain'])
 
     ## organize results
-
+    soildata['total_nitrogen'] = n_ammount
+    fn = os.path.join(cm_sp._tmp_path,f'soil_and_nitrogen_values_{crop}.json')
+    soildata.to_json(fn, orient='records')
+    logging.info(messages[5])
+    
     potential_yield_path = os.path.join(workingpath,f'{crop.lower()}_potential_yield.csv')
     outputmodel_data = pd.read_csv(potential_yield_path).dropna()
     groupby_colname = 'texture'
@@ -321,10 +356,25 @@ def main_caf_function(params_input):
                 yield_data = coffee_yield_data_summarized(subset, date_column = date_col_name, yield_column=target_col_name, n_cycle_column=group_dates_by, harvest_column=harvest_col_name)
                 print(yield_data)
                 yield_data.to_csv(os.path.join(workingpath, f'{txt_class[0]}_yield_data_{texture_class}.csv'))
-            
+    return workingpath
         
 if __name__ == "__main__":
+    MESSAGES = {
+    1: "extracting_spatial_information",
+    2: "setting_up_crop_model_files",
+    3: "running_crop_model",
+    4: "exporting_output_files",
+    5: "organizing_data_for_visualization",
+    6: "process_completed"
+    }
     
     params_input = '{"resultpath": "runs/","flagweather": "1","id_user": "13","crop": "coffee","variety": "sun","aldea": "151910","latitud": "14.798048","longitud": "-87.288973","duration": "","fertilizationdata": "[{\\"coffee_monthsaftertransplant\\":\\"\\",\\"coffee_fuente\\":\\"\\",\\"coffee_n\\":\\"\\",\\"coffee_p\\":\\"\\",\\"coffee_k\\":\\"\\",\\"coffee_cantidadkgha\\":\\"\\"}]"}'
+    data_dict = json.loads(params_input)
     #params_input = '{"resultpath": "runs/","flagweather": "1","id_user": "13","crop": "coffee","variety": "sun","aldea": "031501","latitud": "14.798048","longitud": "-87.288973","duration": "","fertilizationdata": "[{\\"coffee_monthsaftertransplant\\":\\"10\\",\\"coffee_fuente\\":\\"5\\",\\"coffee_n\\":\\"12\\",\\"coffee_p\\":\\"24\\",\\"coffee_k\\":\\"12\\",\\"coffee_cantidadkgha\\":\\"100\\"},{\\"coffee_monthsaftertransplant\\":\\"20\\",\\"coffee_fuente\\":\\"2\\",\\"coffee_n\\":\\"18\\",\\"coffee_p\\":\\"46\\",\\"coffee_k\\":\\"0\\",\\"coffee_cantidadkgha\\":\\"50\\"}]"}'
-    main_caf_function(params_input)
+    config_path = f'model_configurations/crop_model_configuration_coffee.yaml'
+    crop_configuration = OmegaConf.load(config_path)
+
+    crop_configuration.GENERAL_INFO.working_path = f'runs'
+    
+    workingpath = main_caf_function(data_dict, config=crop_configuration, messages = MESSAGES)
+    print(workingpath)
