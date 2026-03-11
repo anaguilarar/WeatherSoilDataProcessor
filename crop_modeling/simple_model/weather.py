@@ -24,6 +24,8 @@ import math
 import datetime as dt
 import pandas as pd
 
+from typing import Optional, List, Dict, Any
+
 CHECK_RADIATION_RANGE = True
 CHECK_SUNSHINE_HOURS_RANGE = True
 
@@ -947,6 +949,39 @@ def etpm(self):
 
 
 class Weather():
+    """
+    A class to manage and process meteorological data for a specific station.
+
+    Parameters
+    ----------
+    path : str, optional
+        The file path to a CSV containing weather data.
+    df : pd.DataFrame, optional
+        A pandas DataFrame containing weather data.
+    station : Any, optional
+        A station object that handles day entry and ET calculations.
+
+    Attributes
+    ----------
+    weather : pd.DataFrame or None
+        The underlying weather dataset.
+    station : Any or None
+        The station associated with this weather data.
+    wind_speed : float or None
+        Current day's wind speed.
+    tmax : float or None
+        Current day's maximum temperature.
+    tmin : float or None
+        Current day's minimum temperature.
+    srad : float or None
+        Current day's solar radiation.
+    rain : float or None
+        Current day's rainfall.
+    vapour_pressure : float or None
+        Current day's vapour pressure.
+    julian_day : int or None
+        The day of the year.
+    """
     
     def _initialize(self):
         self.wind_speed = None
@@ -971,8 +1006,26 @@ class Weather():
     def organize_days():
         pass
     
-    def get_day_eto(self, eto_method = 'PM'):
+    def get_day_eto(self, eto_method:str = 'PM'):
+        """
+        Calculate the reference evapotranspiration (ETo) for the current day.
 
+        Parameters
+        ----------
+        eto_method : {'PM', 'PT'}, optional
+            The method used to calculate ETo. 'PM' stands for Penman-Monteith 
+            and 'PT' stands for Priestley-Taylor. Default is 'PM'.
+
+        Returns
+        -------
+        float
+            The calculated ETo value.
+
+        Raises
+        ------
+        ValueError
+            If an unsupported eto_method is provided.
+        """
         self.eto_method = eto_method
         if self.eto_method == 'PM':
             etoi = self.day_weather.eto()
@@ -982,7 +1035,28 @@ class Weather():
         return etoi
     
     
-    def get_day_weather(self, day, meteorological_variables = None, day_of_year_col_name = 'julian_day'):
+    def get_day_weather(self, day: int, 
+        meteorological_variables: Optional[List[str]] = None, 
+        day_of_year_col_name: str = 'julian_day'
+    ) -> Dict[str, Any]:
+        """
+        Extract weather data for a specific day and update instance attributes.
+
+        Parameters
+        ----------
+        day : int
+            The index of the day to retrieve from the weather data.
+        meteorological_variables : list of str, optional
+            The column names to extract. If None, all columns are used.
+        day_of_year_col_name : str, optional
+            The name of the column representing the Julian day. 
+            Default is 'julian_day'.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the meteorological variables for the day.
+        """
         
         meteorological_variables = meteorological_variables or self.weather.columns
         
@@ -1003,9 +1077,12 @@ class Weather():
     
     def _set_day_meteorological_vars(self):
         
+        """
+        Sync the current daily attributes with the station's day entry.
         
-        #for k,v in kwargs.items():
-        #    setattr(self, k, v)
+        Internal helper to update the `day_weather` object used for ET 
+        calculations.
+        """
         
         self.day_weather = self.station.day_entry(
             self.julian_day, 
