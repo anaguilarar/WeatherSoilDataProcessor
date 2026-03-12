@@ -3,7 +3,7 @@ import os
 import shutil
 
 from datetime import datetime
-from typing import List
+from typing import List, Dict, Optional, Any
 import json
 import logging
 
@@ -23,7 +23,22 @@ from spatialdata.utils import read_compressed_xarray
 
 from spatialdata.soil_data import TEXTURE_CLASSES
 
-def set_up_sim_environment(src_path, target_path):
+def set_up_sim_environment(src_path: str, target_path: str) -> None:
+    """
+    Copies the necessary Coffee Agroforestry (CAF) simulation files to a target directory.
+
+    Parameters
+    ----------
+    src_path : str
+        The source directory containing the generated CAF CSV files.
+    target_path : str
+        The destination directory where the files will be copied to execute the simulation.
+
+    Raises
+    ------
+    AssertionError
+        If 'cafdem.csv' or 'cafsoil.csv' are missing in the `src_path`.
+    """
     
     wth_path = os.path.join(src_path, 'cafdem.csv')
     sl_path = os.path.join(src_path, 'cafsoil.csv')
@@ -32,9 +47,42 @@ def set_up_sim_environment(src_path, target_path):
     shutil.copy2(sl_path, target_path)
     shutil.copy2(os.path.join(src_path, 'cafweather.csv'), target_path)
 
-def extract_soil_data(spatial_processor, soil_variables, dimension_name: str, depth: str, group_by:str = None, project_to:str = "EPSG:4326",
-                    pixel_scale: bool = False, group_codes: List = None
-                    ):
+def extract_soil_data(spatial_processor: Any,
+        soil_variables: List[str],
+        dimension_name: str,
+        depth: str,
+        group_by: Optional[str] = None,
+        project_to: str = "EPSG:4326",
+        pixel_scale: bool = False,
+        group_codes: Optional[List[str]] = None,
+    ) -> Optional[pd.DataFrame]:
+    """
+    Extracts and processes soil data from an xarray datacube.
+
+    Parameters
+    ----------
+    spatial_processor : Any
+        Object managing spatial data paths and operations.
+    soil_variables : List[str]
+        List of soil variables to extract.
+    dimension_name : str
+        The name of the depth dimension in the datacube.
+    depth : str
+        The specific depth value to filter by (e.g., '15-30').
+    group_by : str, optional
+        Variable to group the spatial data by (default is None).
+    project_to : str, optional
+        CRS EPSG code to project the data to (default is "EPSG:4326").
+    pixel_scale : bool, optional
+        Whether to aggregate at the pixel scale (default is False).
+    group_codes : List[str], optional
+        List of codes corresponding to the integer groups in `group_by`.
+
+    Returns
+    -------
+    Optional[pd.DataFrame]
+        A dataframe containing the extracted soil data, or None if files are missing.
+    """
     
     if not os.path.exists(spatial_processor._soil_tmppath) and os.path.exists(spatial_processor._weather_tmppath): return None
     cafsoil = CAFSoil(xrdata_path = spatial_processor._soil_tmppath)
@@ -56,7 +104,20 @@ def extract_soil_data(spatial_processor, soil_variables, dimension_name: str, de
         
     return dfdata
 
-def month_year(dates: pd.Series):
+def month_year(dates: pd.Series) -> List[str]:
+    """
+    Converts a pandas Series of datetime objects into formatted month_year strings.
+
+    Parameters
+    ----------
+    dates : pd.Series
+        Series containing datetime objects.
+
+    Returns
+    -------
+    List[str]
+        List of strings formatted as "MM_YYYY" (e.g., "04_1991").
+    """
     months = dates.dt.month
     years = dates.dt.year
 
@@ -67,7 +128,30 @@ def month_year(dates: pd.Series):
     
     return encodeddates
 
-def fertilization_set_up(application_month, n_ammount, n_years, planting_year):
+def fertilization_set_up(application_month: int, 
+        n_amount: float, 
+        n_years: int, 
+        planting_year: int
+    ) -> Dict[str, List[float]]:
+    """
+    Generates a generic fertilization event schedule over multiple years.
+
+    Parameters
+    ----------
+    application_month : int
+        The month of the year the fertilizer is applied.
+    n_amount : float
+        The amount of Nitrogen (N) applied.
+    n_years : int
+        The number of consecutive years the fertilizer is applied.
+    planting_year : int
+        The starting year of the planting.
+
+    Returns
+    -------
+    Dict[str, List[float]]
+        A dictionary containing lists of years, day of year, and N amounts.
+    """
 
     ferti_event = {
         'years': [],
@@ -78,7 +162,7 @@ def fertilization_set_up(application_month, n_ammount, n_years, planting_year):
     for m in range(n_years):
         ferti_event['years'].append(planting_year + m)
         ferti_event['dayofyear'].append(application_month*30)
-        ferti_event['N_amount'].append(n_ammount)
+        ferti_event['N_amount'].append(n_amount)
         
     return ferti_event
     
@@ -105,7 +189,27 @@ def organize_caf_fertilization_from_app(fert_input: List):
 
 ## input params
 
-def main_caf_function(data_dict, config, messages = None):
+def main_caf_function(data_dict: Dict[str, Any], 
+        config: Any, 
+        messages: Optional[Dict[int, str]] = None
+    ) -> str:
+    """
+    Main orchestration function to setup, run, and extract the Coffee Agroforestry (CAF) model.
+
+    Parameters
+    ----------
+    data_dict : Dict[str, Any]
+        Dictionary containing user inputs (e.g., crop, variety, village, fertilization data).
+    config : Any
+        OmegaConf object holding model configurations.
+    messages : Optional[Dict[int, str]], optional
+        Dictionary mapping progress step integers to log message strings.
+
+    Returns
+    -------
+    str
+        The working directory path where the results were saved.
+    """
     
     tmp_path =  data_dict["resultpath"]
     logging.basicConfig(level=logging.INFO,
@@ -122,14 +226,15 @@ def main_caf_function(data_dict, config, messages = None):
 
     village_info = config.SPATIAL_INFO.get('villages_folderpath', '')
 
-    ## organize management
-
+    # --- Organize management ---
     dict_organizer = CAFManagement()
     config.MANAGEMENT.starting_date = planting_date
+    
     if interval_years == 0:
         planting_dates = dict_organizer.planting_dates_from_aperiod(config.MANAGEMENT.starting_date, '2024-12-31', config.MANAGEMENT.n_cycles, coffe_plant_duration=duration)
     else:
         planting_dates = dict_organizer.planting_dates_from_interval(config.MANAGEMENT.starting_date, '2024-12-31', interval_years, duration)
+        config.MANAGEMENT.n_cycles = len(planting_dates)
     
     management_dict = dict_organizer.create_config_template(planting_dates, starting_date=config.MANAGEMENT.starting_date)
 

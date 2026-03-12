@@ -364,7 +364,7 @@ class CAFManagement():
             'life_cycle_years': kwargs.get('life_cycle_years', 7),
             'fertilization': kwargs.get('fertilization', self._empty_fert),
             'coffee_prunning': kwargs.get('coffee_prunning', self._empty_coffee_prunning),
-            'tree_prunning': kwargs.get('tree_prunning', self._empty_tree_prunnadd_ferti_eventing),
+            'tree_prunning': kwargs.get('tree_prunning', self._empty_tree_prunning),
             'tree_thinning': kwargs.get('tree_thinning', self._empty_tree_thinning)
         }
 

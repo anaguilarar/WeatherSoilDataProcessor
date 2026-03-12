@@ -8,7 +8,7 @@ from omegaconf import OmegaConf
 import pandas as pd
 
 from .utils.process import model_selection
-from .caf.management import fertiOrganizer
+from .caf.management import FertiOrganizer
 from .utils.output_transforms import ColumnNames, update_data_using_path
 from .spatial_process import SpatialCM
 
@@ -29,12 +29,12 @@ def caf_coffeeplant_productioncycle(production_years, management_configuration):
     return management_configuration   
 
 
-class SpatialCAF(SpatialCM, fertiOrganizer):
+class SpatialCAF(SpatialCM, FertiOrganizer):
 
     def __init__(self, planting_date, **kwargs):
         SpatialCM.__init__(self,**kwargs)
         self._colnames = ColumnNames(self.model.name)
-        fertiOrganizer.__init__(self,planting_date)
+        FertiOrganizer.__init__(self,planting_date)
 
 
     def ferti_days_after_flowering(self, flowering_dates: pd.DataFrame,
