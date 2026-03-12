@@ -199,7 +199,7 @@ def _setup_management_config(data_dict: Dict[str, Any], config: Any) -> Tuple[CA
 
     dict_organizer = CAFManagement()
     config.MANAGEMENT.starting_date = planting_date
-    
+    print('planting date', config.MANAGEMENT.starting_date)
     if interval_years == 0:
         planting_dates = dict_organizer.planting_dates_from_aperiod(
             config.MANAGEMENT.starting_date, "2024-12-31", config.MANAGEMENT.n_cycles, coffe_plant_duration=duration
