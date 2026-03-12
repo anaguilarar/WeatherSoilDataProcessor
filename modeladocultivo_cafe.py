@@ -195,8 +195,8 @@ def _setup_management_config(data_dict: Dict[str, Any], config: Any) -> Tuple[CA
     cultivar_id = data_dict["variety"].lower()
     duration = 7 if data_dict["duration"] == "" else int(data_dict["duration"]) if crop == "coffee" else ""
     interval_years = 0 if data_dict["intervalbetweenscenarios"] == "" else int(data_dict["intervalbetweenscenarios"])
-    planting_date = data_dict.get("initialtransplantdate", "1991-04-01")
-
+    planting_date = config.get("initialtransplantdate", "1991-04-01")
+    planting_date = "1991-04-01" if planting_date == "" else planting_date
     dict_organizer = CAFManagement()
     config.MANAGEMENT.starting_date = planting_date
     print('planting date', config.MANAGEMENT.starting_date)
