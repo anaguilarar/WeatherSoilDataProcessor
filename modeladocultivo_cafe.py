@@ -3,7 +3,7 @@ import os
 import shutil
 
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 import json
 import logging
 
@@ -17,6 +17,7 @@ from crop_modeling.caf.management import CAFManagement
 from crop_modeling.caf.output import CAFOutputData
 from crop_modeling.spatial_cm import SpatialCAF
 from crop_modeling.caf.files_export import CAFSoil
+from crop_modeling.caf.trees import Tree
 from crop_modeling.utils.process import summarize_datacube_as_df
 
 from spatialdata.utils import read_compressed_xarray
@@ -187,7 +188,34 @@ def organize_caf_fertilization_from_app(fert_input: List):
         days_list.append(to_days); nammount_list.append(n)
     return days_list, nammount_list
 
-## input params
+
+def _setup_management_config(data_dict: Dict[str, Any], config: Any) -> Tuple[CAFManagement, List[str], Dict[str, Any]]:
+    """Extracts payload data and builds the CAF management configuration dictionary."""
+    crop = data_dict["crop"].lower()
+    cultivar_id = data_dict["variety"].lower()
+    duration = 7 if data_dict["duration"] == "" else int(data_dict["duration"]) if crop == "coffee" else ""
+    interval_years = 0 if data_dict["intervalbetweenscenarios"] == "" else int(data_dict["intervalbetweenscenarios"])
+    planting_date = data_dict.get("initialtransplantdate", "1991-04-01")
+
+    dict_organizer = CAFManagement()
+    config.MANAGEMENT.starting_date = planting_date
+    
+    if interval_years == 0:
+        planting_dates = dict_organizer.planting_dates_from_aperiod(
+            config.MANAGEMENT.starting_date, "2024-12-31", config.MANAGEMENT.n_cycles, coffe_plant_duration=duration
+        )
+    else:
+        planting_dates = dict_organizer.planting_dates_from_interval(
+            config.MANAGEMENT.starting_date, "2024-12-31", interval_years, duration
+        )
+
+    management_dict = dict_organizer.create_config_template(planting_dates, starting_date=config.MANAGEMENT.starting_date, coffe_plant_duration = duration)
+    management_dict["TREE"]["species_name"] = cultivar_id
+    management_dict["TREE"]["tree_density"] = Tree().tree_density(cultivar_id.lower())
+
+    return dict_organizer, planting_dates, management_dict
+
+
 
 def main_caf_function(data_dict: Dict[str, Any], 
         config: Any, 
@@ -216,32 +244,19 @@ def main_caf_function(data_dict: Dict[str, Any],
                     format='%(asctime)s - %(levelname)s - %(message)s', filename=os.path.join(tmp_path, 'run.log'))
 
     crop = data_dict["crop"].lower()
-    cultivar_id = data_dict["variety"].lower()
+    
     duration = 7 if data_dict["duration"] == '' else int(data_dict["duration"]) if crop == 'coffee' else ""
     geocode = data_dict['aldea']
-    interval_years = 0 if data_dict["intervalbetweenscenarios"] == '' else int(data_dict["intervalbetweenscenarios"])
-    planting_date = data_dict.get('initialtransplantdate', '1991-04-01')
+    
     fertilizationdata = json.loads(data_dict["fertilizationdata"]) if data_dict["fertilizationdata"] != "" else []
     app_days, n_amounts = organize_caf_fertilization_from_app(fertilizationdata)
 
     village_info = config.SPATIAL_INFO.get('villages_folderpath', '')
-
-    # --- Organize management ---
-    dict_organizer = CAFManagement()
-    config.MANAGEMENT.starting_date = planting_date
     
-    if interval_years == 0:
-        planting_dates = dict_organizer.planting_dates_from_aperiod(config.MANAGEMENT.starting_date, '2024-12-31', config.MANAGEMENT.n_cycles, coffe_plant_duration=duration)
-    else:
-        planting_dates = dict_organizer.planting_dates_from_interval(config.MANAGEMENT.starting_date, '2024-12-31', interval_years, duration)
-        config.MANAGEMENT.n_cycles = len(planting_dates)
+    # --- Organize management ---    
+    _, planting_dates, management_dict = _setup_management_config(data_dict, config)
     
-    management_dict = dict_organizer.create_config_template(planting_dates, starting_date=config.MANAGEMENT.starting_date, coffe_plant_duration = duration)
-
-    management_dict['TREE']['species_name'] = cultivar_id
-    if cultivar_id.lower() == 'sun': management_dict['TREE']['tree_density'] = 0
-    else: management_dict['TREE']['tree_density'] = None
-        
+    print('***************',management_dict["TREE"])
     ## define model
 
     cm_sp = SpatialCAF(configuration_dict = config, load_env_data= False, planting_date = planting_dates)

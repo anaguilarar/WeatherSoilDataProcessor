@@ -1,6 +1,26 @@
 
 class Tree():
     @staticmethod
+    def tree_density(tree_species):
+        if tree_species.lower() in ["erythrina","erythrina poeppigiana", "poro"]:
+            return 0.015
+        elif tree_species in ["inga","inga sp."]:
+            return 0.012
+        elif tree_species.lower() in ["banana", "musa sp.","musa"]:
+            return 0.02
+        elif tree_species.lower() in ["avocado", "Persea americana"]:
+            return 0.005
+        elif tree_species.lower() in ["grevillea", "g. robusta"]:
+            return 0.009
+        elif tree_species.lower() in ["cordia", "c. alliodora"]:
+            return 0.008
+        elif tree_species.lower() in ["sun"]:
+            return 0
+        else:
+            print(f'there are not parameters for {tree_species}, 0 value is returned')
+            return 0
+    
+    @staticmethod
     def species_params(tree_species):
         def params_1():
             """Erythrina","Erythrina poeppigiana","E. poeppigiana",

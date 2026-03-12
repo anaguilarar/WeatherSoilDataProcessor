@@ -550,8 +550,11 @@ class CAFManagement():
         range_years = (date_difference.days//365)
         
         
-        if interval_years <2 or interval_years >= 10:
-            print('wrong interval years, default of 5 years is used')
+        if interval_years <3 or interval_years >= 10:
+            print('****** Wrong interval years, default of 5 years is used *****')
+            print("""
+                  Max 10 years Min 3 years
+                  """)
             interval_years = 5
         
         planting_dates = []
