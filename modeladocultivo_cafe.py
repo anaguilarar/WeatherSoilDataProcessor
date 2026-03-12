@@ -236,7 +236,7 @@ def main_caf_function(data_dict: Dict[str, Any],
         planting_dates = dict_organizer.planting_dates_from_interval(config.MANAGEMENT.starting_date, '2024-12-31', interval_years, duration)
         config.MANAGEMENT.n_cycles = len(planting_dates)
     
-    management_dict = dict_organizer.create_config_template(planting_dates, starting_date=config.MANAGEMENT.starting_date)
+    management_dict = dict_organizer.create_config_template(planting_dates, starting_date=config.MANAGEMENT.starting_date, coffe_plant_duration = duration)
 
     management_dict['TREE']['species_name'] = cultivar_id
     if cultivar_id.lower() == 'sun': management_dict['TREE']['tree_density'] = 0
