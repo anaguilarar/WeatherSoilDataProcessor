@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from typing import Dict, List, Sequence, Union, Any
+from typing import Dict, List, Sequence, Union, Any, Optional
 
 import pandas as pd
 
@@ -28,9 +28,28 @@ def repeate_mpractice(ntimes, years, dayofyear, practice_value):
         count +=ntimes
     return array_c
 
-class prunningOrganizer():
-    
-    def restar_prunning_template(self):
+class PruningOrganizer():
+    """
+    Organizer to create pruning schedules for coffee planting cycles.
+
+    Parameters
+    ----------
+    planting_date : str or List[str]
+        Planting date string in '%Y-%m-%d' format or a list of such strings.
+
+    Attributes
+    ----------
+    planting_dates : List[str]
+        List of planting date strings.
+    n_cycles : int
+        Number of planting cycles.
+    _currentcycle : int
+        Current cycle index (1-based internally, converted to 0-based from caller).
+    prunning_template : dict
+        Temporary template used to accumulate pruning events.
+    """
+
+    def restart_pruning_template(self):
         
         self.prunning_template = {
             'years': [],
@@ -49,14 +68,25 @@ class prunningOrganizer():
             self.n_cycles = 1
         
         self._currentcycle = 1
-        self.restar_prunning_template()
+        self.restart_pruning_template()
     
     @property
     def pdates(self):
         return [datetime.strptime(planting_date, '%Y-%m-%d') for planting_date in self.planting_dates]
     
-    def add_prunning_event(self, year:int, days_of_year:int, prunning_fraction:float):
-        
+    def add_prunning_event(self, year:int, days_of_year:int, prunning_fraction:float) -> None:
+        """
+        Adds a pruning event relative to the planting date of the current cycle.
+
+        Parameters
+        ----------
+        year_offset : int
+            Years to add to the planting year.
+        days_of_year : int
+            Day of the year for the pruning event.
+        prunning_fraction : float
+            Fraction of pruning applied.
+        """
         
         pdate = self.pdates[self._currentcycle] 
         pyear = pdate.replace(year = pdate.year+year).year
@@ -66,7 +96,27 @@ class prunningOrganizer():
         self.prunning_template['prun_fraction'] = prunning_fraction
     
 
-    def create_event_cycle_prunning_schedule(self, id_cycle, years: List[int], days_ofthe_year: List[int], prunning_fraction: float) -> dict:
+    def create_event_cycle_prunning_schedule(self, id_cycle, years: List[int], days_ofthe_year: List[int], prunning_fraction: float) -> Dict[str, Any]:
+        """
+        Builds pruning events for a single cycle.
+
+        Parameters
+        ----------
+        id_cycle : int
+            Cycle index.
+        years : List[int]
+            List of year offsets from the planting date.
+        days_of_the_year : List[int]
+            List of days of the year for the pruning event.
+        prunning_fraction : float
+            Fraction of pruning applied.
+
+        Returns
+        -------
+        Dict[str, Any]
+            Dictionary containing the pruning events for the specified cycle.
+        """
+
         self._currentcycle =id_cycle
         
         for year,doy in zip(years, days_ofthe_year):
@@ -74,17 +124,34 @@ class prunningOrganizer():
             self.add_prunning_event(year, doy, prunning_fraction)
 
         prunning_events = self.prunning_template
-        self.restar_prunning_template()
+        self.restart_pruning_template()
         return prunning_events
     
-    def prunning_schedule(self, years: List[int], days_ofthe_year: List[int], prunning_fraction: float) -> dict:
+    def prunning_schedule(self, years: List[int], days_ofthe_year: List[int], prunning_fraction: float) -> Dict[str, Dict[str, Any]]:
+        """
+        Builds a pruning schedule for all cycles.
+
+        Parameters
+        ----------
+        years : List[int]
+            List of year offsets.
+        days_of_the_year : List[int]
+            List of days of the year.
+        prunning_fraction : float
+            Fraction of pruning applied.
+
+        Returns
+        -------
+        Dict[str, Dict[str, Any]]
+            Mapping "cycle_treatment_{i}" -> pruning events dictionary.
+        """
         prunning_schedule = {}
         for i in range(self.n_cycles):
             prunning_schedule[f'cycle_treatment_{i+1}'] = self.create_event_cycle_prunning_schedule(i, years, days_ofthe_year, prunning_fraction)
         
         return prunning_schedule
     
-class fertiOrganizer():
+class FertiOrganizer():
     """
     Organizer to create fertilization schedules for coffee planting cycles.
 
@@ -276,7 +343,7 @@ class CAFManagement():
                 }
         }
     
-    def create_treatment_dict(self, **kwargs):
+    def create_treatment_dict(self, **kwargs) -> Dict[str, Any]:
         """
         Create a treatment dictionary for a cycle.
 
@@ -291,20 +358,16 @@ class CAFManagement():
         dict
             Treatment dictionary.
         """
-        treatment_dict = {}
-        planting_date = kwargs.get('planting_date')
-        treatment_dict.update({'planting_date':planting_date})
-        life_cycle_years = kwargs.get('life_cycle_years', 7)
-        treatment_dict.update({'life_cycle_years':life_cycle_years})
-        fertilization = kwargs.get('fertilization', self._empty_fert)
-        treatment_dict.update({'fertilization':fertilization})
-        coffee_prunning = kwargs.get('coffee_prunning', self._empty_coffee_prunning)
-        treatment_dict.update({'coffee_prunning':coffee_prunning})
-        tree_prunning = kwargs.get('coffee_prunning', self._empty_tree_prunning)
-        treatment_dict.update({'tree_prunning':tree_prunning})
-        tree_thinning = kwargs.get('coffee_prunning', self._empty_tree_thinning)
-        treatment_dict.update({'tree_thinning':tree_thinning})
-        return treatment_dict
+        
+        return {
+            'planting_date': kwargs.get('planting_date'),
+            'life_cycle_years': kwargs.get('life_cycle_years', 7),
+            'fertilization': kwargs.get('fertilization', self._empty_fert),
+            'coffee_prunning': kwargs.get('coffee_prunning', self._empty_coffee_prunning),
+            'tree_prunning': kwargs.get('tree_prunning', self._empty_tree_prunnadd_ferti_eventing),
+            'tree_thinning': kwargs.get('tree_thinning', self._empty_tree_thinning)
+        }
+
 
     def create_config_template(self, planting_dates: List[str], starting_date:str = None, coffe_plant_duration:int = 7) -> Dict:
         """
@@ -333,7 +396,7 @@ class CAFManagement():
         for i, n_cycle_date in enumerate(planting_dates):
             cycleyear = datetime.strptime(n_cycle_date, '%Y-%m-%d').year
             
-            caf_ferti_scheduler = fertiOrganizer(n_cycle_date)
+            caf_ferti_scheduler = FertiOrganizer(n_cycle_date)
             caf_ferti_scheduler.fertilization_schedule([0], [0])
             ferti = caf_ferti_scheduler.fertilization_schedule([0], [0])['cycle_treatment_1']
             
@@ -343,7 +406,14 @@ class CAFManagement():
 
         return general_config | treatment_dict
         
-    def fertilization_schedule(self, n_fertilization_per_year = None, years = None, dayofyear = None, N_amount = None, schedule: Dict = None):
+    def fertilization_schedule(self, n_fertilization_per_year: Optional[int] = None, 
+        years: Optional[Sequence[int]] = None, 
+        dayofyear: Optional[Union[int, List[int]]] = None, 
+        N_amount: Optional[Union[float, int]] = None, 
+        schedule: Optional[Dict] = None
+        ) -> np.ndarray:
+        """Builds a NumPy array representation of the fertilization schedule."""
+
         fert_calendar = np.zeros((100,3), dtype=float)
         fert_calendar[:] = -1
         if schedule is None:
@@ -353,7 +423,14 @@ class CAFManagement():
             pass # TODO 
         return fert_calendar
         
-    def coffe_prunning_schedule(self, n_prunning_peryear = None, years = None, dayofyear = None, prun_fraction = 0.25, schedule: Dict = None):
+    def coffe_prunning_schedule(self, n_prunning_peryear: Optional[int] = None, 
+            years: Optional[Sequence[int]] = None, 
+            dayofyear: Optional[Union[int, List[int]]] = None, 
+            prun_fraction: float = 0.25, 
+            schedule: Optional[Dict] = None
+        ) -> np.ndarray:
+        """Builds a NumPy array representation of the coffee pruning schedule."""
+
         cprun_calendar = np.zeros((100,3), dtype=float)
         cprun_calendar[:] = -1
         if schedule is None:
@@ -362,7 +439,16 @@ class CAFManagement():
             
         return cprun_calendar
     
-    def tree_prunning_schedule(self, n_c = 3, n_prunning_peryear = None, years = None, dayofyear = None, prun_fraction = 0.25, tree_n = 1, schedule: Dict = None):
+    def tree_prunning_schedule(self,n_c: int = 3, 
+        n_prunning_peryear: Optional[int] = None, 
+        years: Optional[Sequence[int]] = None, 
+        dayofyear: Optional[Union[int, List[int]]] = None, 
+        prun_fraction: float = 0.25, 
+        tree_n: int = 1, 
+        schedule: Optional[Dict] = None
+            ) -> np.ndarray:
+        """Builds a NumPy array representation of the tree pruning schedule."""
+        
         tprun_calendar = np.zeros((n_c,100,3), dtype=float)
         tprun_calendar[:] = -1
         if schedule is None:
@@ -371,7 +457,17 @@ class CAFManagement():
         
         return tprun_calendar
     
-    def tree_thinning_schedule(self, n_c = 3, n_thinning_peryear = None, years = None, dayofyear = None, thinning_fraction = 0.1, tree_n = 1, schedule: Dict = None):
+    def tree_thinning_schedule(self, 
+            n_c: int = 3, 
+            n_thinning_peryear: Optional[int] = None, 
+            years: Optional[Sequence[int]] = None, 
+            dayofyear: Optional[Union[int, List[int]]] = None, 
+            thinning_fraction: float = 0.1, 
+            tree_n: int = 1, 
+            schedule: Optional[Dict] = None
+        ) -> np.ndarray:
+        """Builds a NumPy array representation of the tree thinning schedule."""
+        
         tthinning_calendar = np.zeros((n_c,100,3), dtype=float)
         tthinning_calendar[:] = -1
         if schedule is None:
@@ -381,7 +477,30 @@ class CAFManagement():
         return tthinning_calendar
     
     @staticmethod
-    def planting_dates_from_aperiod(starting_date, ending_date, n_cycles, coffe_plant_duration:int = 7):
+    def planting_dates_from_aperiod(starting_date: str, 
+            ending_date: str, 
+            n_cycles: int, 
+            coffe_plant_duration: int = 7
+        ) -> List[str]:
+        """
+        Generates planting dates partitioned across a given period.
+
+        Parameters
+        ----------
+        starting_date : str
+            Start date formatted as '%Y-%m-%d'.
+        ending_date : str
+            End date formatted as '%Y-%m-%d'.
+        n_cycles : int
+            Number of requested cycles.
+        coffe_plant_duration : int, optional
+            Duration a coffee plant lives, defaults to 7.
+
+        Returns
+        -------
+        List[str]
+            A list of formatted planting date strings.
+        """
         
         start_date = datetime.strptime(starting_date, '%Y-%m-%d')
         end_years = datetime.strptime(ending_date, '%Y-%m-%d') - relativedelta(years=coffe_plant_duration)
@@ -396,3 +515,50 @@ class CAFManagement():
             n_cycle_dates.append(nstrdate.strftime('%Y-%m-%d'))
             
         return n_cycle_dates
+
+    @staticmethod    
+    def planting_dates_from_interval(starting_date: str, 
+            end_date: str, 
+            interval_years: int, 
+            coffe_plant_duration: int
+        ) -> List[str]:
+        """
+        Generates planting dates partitioned by fixed yearly intervals.
+
+        Parameters
+        ----------
+        starting_date : str
+            Start date formatted as '%Y-%m-%d'.
+        end_date : str
+            End date formatted as '%Y-%m-%d'.
+        interval_years : int
+            Years to space out between plants.
+        coffe_plant_duration : int
+            Duration a coffee plant lives.
+
+        Returns
+        -------
+        List[str]
+            A list of formatted planting date strings.
+        """
+        
+        starting_date_dt = datetime.strptime(starting_date, '%Y-%m-%d') 
+        starting_year = starting_date_dt.year
+        ending_date = datetime.strptime(end_date, '%Y-%m-%d') - relativedelta(years=coffe_plant_duration)
+        
+        date_difference = ending_date - starting_date_dt
+        range_years = (date_difference.days//365)
+        
+        
+        if interval_years <2 or interval_years >= 10:
+            print('wrong interval years, default of 5 years is used')
+            interval_years = 5
+        
+        planting_dates = []
+        y = 0
+        for _ in range(0, (range_years//interval_years)+1):
+            newdate = str(starting_year + y) + starting_date[4:]
+            planting_dates.append(newdate)
+            y+=interval_years
+            
+        return planting_dates
