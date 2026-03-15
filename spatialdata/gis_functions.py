@@ -461,6 +461,38 @@ def coordinates_fromtransform(transform, imgsize):
     #
     return [cols, rows]
 
+def numpy_to_xarray(stacked_arrays, transform, crs, var_name="precipitation"):
+    """
+    Cleaner replacement for list_tif_2xarray for CHW / depth datasets.
+    Assumes stacked_arrays is a list of (1, Height, Width) or (Height, Width) arrays.
+    """
+    # Create an cleanly shaped 3D numpy array: (depth, y, x)
+    data = np.stack(stacked_arrays, axis=0).squeeze()
+    if data.ndim == 2:
+        data = data[np.newaxis, ...] # ensure depth dimension exists
+    depth, height, width = data.shape
+    
+    # Re-build coordinates explicitly from your Transform
+    # 0.5 shift guarantees X, Y coordinates align perfectly with pixel centers
+    xs = (np.arange(width) + 0.5) * transform.a + transform.c
+    ys = (np.arange(height) + 0.5) * transform.e + transform.f
+    # Create the native DataArray
+    da = xarray.DataArray(
+        data=data,
+        dims=["date", "y", "x"],
+        coords={
+            "date": np.arange(depth), # Note: you can pass actual datetimes here!
+            "y": ys,
+            "x": xs
+        },
+        name=var_name
+    )
+    
+    # Seal in projection settings automatically utilizing the `.rio` accessor
+    da = da.rio.write_crs(crs)
+    da = da.rio.write_transform(transform)
+    # Return as an xarray Dataset
+    return da.to_dataset()
 
 def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine, 
                      crs: str, nodata: int=0, 
@@ -468,7 +500,9 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
                      dimsformat: str = 'CHW',
                      dimsvalues: Dict[str, np.ndarray] = None,
                      depth_dim_name: str = 'date',
-                     dtype = None):
+                     dtype = None,
+                     height: int = None,
+                     width: int = None):
     
     """
     Convert a list of raster images to an xarray dataset.
@@ -502,35 +536,35 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
     
     if len(listraster[0].shape) == 2:            
         if dimsformat == 'CHW':
-            width = listraster[0].shape[1]
-            height = listraster[0].shape[0]
+            width = width if width is not None else listraster[0].shape[1]
+            height = height if height is not None else listraster[0].shape[0]
             dims = ['y','x']
         if dimsformat == 'CWH':
-            width = listraster[0].shape[0]
-            height = listraster[0].shape[1]
+            width = width if width is not None else listraster[0].shape[0]
+            height = height if height is not None else listraster[0].shape[1]
             dims = ['y','x']
             
     if len(listraster[0].shape) == 3:
         
         ##TODO: allow multiple formats+
         if dimsformat == 'CDWH':
-            width = listraster[0].shape[1]
-            height = listraster[0].shape[2]
+            width = width if width is not None else listraster[0].shape[1]
+            height = height if height is not None else listraster[0].shape[2]
             dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'CDHW':
-            width = listraster[0].shape[2]
-            height = listraster[0].shape[1]
+            width = width if width is not None else listraster[0].shape[2]
+            height = height if height is not None else listraster[0].shape[1]
             dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'DCHW':
-            width = listraster[0].shape[2]
-            height = listraster[0].shape[1]
+            width = width if width is not None else listraster[0].shape[2]
+            height = height if height is not None else listraster[0].shape[1]
             dims = [depth_dim_name,'y','x']
             
         if dimsformat == 'CHWD':
-            width = listraster[0].shape[1]
-            height = listraster[0].shape[0]
+            width = width if width is not None else listraster[0].shape[1]
+            height = height if height is not None else listraster[0].shape[0]
             dims = ['y','x',depth_dim_name]
 
     dim_names = {'dim_{}'.format(i):dims[i] for i in range(
@@ -581,6 +615,12 @@ def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine,
     if dtype is not None: 
         metadata['dtype'] = dtype
         multi_xarray = multi_xarray.astype(dtype)
+        
+    import rioxarray
+    if crs is not None:
+        multi_xarray = multi_xarray.rio.write_crs(crs)
+    if transform is not None:
+        multi_xarray = multi_xarray.rio.write_transform(transform)
         
     return multi_xarray
 

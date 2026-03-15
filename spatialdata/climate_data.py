@@ -9,11 +9,13 @@ import cdsapi
 import geopandas as gpd
 import numpy as np
 import pandas as pd
-import rasterio
+
 from rasterio.mask import mask
 from shapely.geometry import Polygon
 import tqdm
 import xarray
+import rioxarray as rio
+import rasterio
 
 import os
 import cdsapi
@@ -35,7 +37,7 @@ from .files_manager import (
 from .gis_functions import (
     from_polygon_2bbox,
     from_xyxy_2polygon,
-    list_tif_2xarray,
+    numpy_to_xarray,
     read_raster_data
 )
 from .utils import download_file
@@ -93,17 +95,17 @@ def transform_dates_for_AgEraquery(
 
 
 def download_mlt_data_from_agera5(
-    variable: str, 
-    starting_date: str, 
-    ending_date: str, 
-    output_folder: str, 
-    aoi_extent: List[float], 
-    product: str= "sis-agrometeorological-indicators", 
-    statistic: Optional[str] = None,
-    ncores: int = 10,
-    version: str ="2_0",
-    max_attempts = 3
-) -> None:
+        variable: str, 
+        starting_date: str, 
+        ending_date: str, 
+        output_folder: str, 
+        aoi_extent: List[float], 
+        product: str= "sis-agrometeorological-indicators", 
+        statistic: Optional[str] = None,
+        ncores: int = 10,
+        version: str ="2_0",
+        max_attempts = 3
+    ) -> None:
     """
     Download multiple layers of data from AgEra5 for a given variable and time range.
 
@@ -232,17 +234,21 @@ class CHIRPS_download:
     """
 
 
-    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05', chirps_version: str = 'v3.0') -> None:
+    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05', version: str = '3.0') -> None:
         self._frequency = frequency
         self.resolution = sp_resolution
-        self.version = chirps_version
+        self.version = version
         #self._url = if ver
         #TODO: implement version 3 options era https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/ERA5/2000/
         #                                  IMERGLATE https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/IMERGlate-v07/
 
     def set_url(self, year, date):
+        if int(year) <= 2000:
+            version = 'v2.0'
+        else:
+            version = 'v3.0'
 
-        if self.version == 'v2.0':
+        if version == 'v2.0':
             return "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_{}/cogs/p{}/{}/chirps-v2.0.{}.cog".format(
                 self._frequency,
                 self.resolution,
@@ -250,7 +256,7 @@ class CHIRPS_download:
                 date
             )
             
-        elif self.version == 'v3.0':
+        elif version == 'v3.0':
             return "https://data.chc.ucsb.edu/products/CHIRP-v3.0/{}/global/tifs/{}/chirp-v3.0.{}.tif".format(
                 self._frequency,
                 year,
@@ -300,10 +306,19 @@ class CHIRPS_download:
                 urlpath = self.set_url(year, date_str)
                 print(urlpath)
                 with rasterio.open(urlpath) as src:
-                    meta = src.profile
-                    masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
-                    stackimages.append(masked)
-                xrm = list_tif_2xarray(masked, mask_transform, crs=str(meta['crs']), bands_names=['precipitation'], dimsformat= 'CHW')
+                   meta = src.profile
+                   masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
+                   stackimages.append(masked)
+
+                #height = masked.shape[1]
+                #width = masked.shape[2]
+                
+                xrm = numpy_to_xarray(stackimages, mask_transform, crs=str(meta['crs']), var_name='precipitation')
+                # xda = rio.open_rasterio(urlpath)
+                print(xrm)
+                # clipped_xda = xda.rio.clip(gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crs=str(xda.rio.crs), drop=True)
+                # clipped_xda.name = "precipitation"
+                # xrm = clipped_xda.to_dataset()
                 xrm.to_netcdf(os.path.join(output_path,year, 'chirps_precipitation_{}{}{}.nc'.format(year,month,day)))
 
         return os.path.join(output_path,year)
@@ -568,7 +583,7 @@ class ClimateDataDownload(object):
             os.mkdir(output_path)
         return output_path
     
-    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0, version = '2_0', chirps_version = 'v3.0'):
+    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0, version = '2_0'):
         """
         Downloads weather data for the specified variables.
 
@@ -604,7 +619,6 @@ class ClimateDataDownload(object):
                     'output_path':outputpath,
                     'ncores': ncores,
                     'version': version,
-                    'chirps_version': chirps_version,
                     **config['params']
                 }
                 if 'relative_humidity' in var: params.update({'time':info.get('time', None)})
