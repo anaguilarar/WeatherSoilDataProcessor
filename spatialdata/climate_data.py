@@ -232,22 +232,30 @@ class CHIRPS_download:
     """
 
 
-    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05', version = 'v2.0') -> None:
+    def __init__(self, frequency: str = 'daily', sp_resolution: str = '05', chirps_version: str = 'v3.0') -> None:
         self._frequency = frequency
         self.resolution = sp_resolution
-        self.version = version
+        self.version = chirps_version
         #self._url = if ver
         #TODO: implement version 3 options era https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/ERA5/2000/
         #                                  IMERGLATE https://data.chc.ucsb.edu/products/CHIRPS/v3.0/daily/final/IMERGlate-v07/
 
     def set_url(self, year, date):
 
-        return "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_{}/cogs/p{}/{}/chirps-v2.0.{}.cog".format(
-            self._frequency,
-            self.resolution,
-            year,
-            date
-        )
+        if self.version == 'v2.0':
+            return "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_{}/cogs/p{}/{}/chirps-v2.0.{}.cog".format(
+                self._frequency,
+                self.resolution,
+                year,
+                date
+            )
+            
+        elif self.version == 'v3.0':
+            return "https://data.chc.ucsb.edu/products/CHIRP-v3.0/{}/global/tifs/{}/chirp-v3.0.{}.tif".format(
+                self._frequency,
+                year,
+                date
+            )
 
     def current_date(self):
         self._current_date + 1
@@ -560,7 +568,7 @@ class ClimateDataDownload(object):
             os.mkdir(output_path)
         return output_path
     
-    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0, version = '2_0'):
+    def download_weather_information(self, weather_variables:Dict, suffix_output_folder:str = None, export_as_netcdf: bool = False, ncores: int = 0, version = '2_0', chirps_version = 'v3.0'):
         """
         Downloads weather data for the specified variables.
 
@@ -596,6 +604,7 @@ class ClimateDataDownload(object):
                     'output_path':outputpath,
                     'ncores': ncores,
                     'version': version,
+                    'chirps_version': chirps_version,
                     **config['params']
                 }
                 if 'relative_humidity' in var: params.update({'time':info.get('time', None)})
