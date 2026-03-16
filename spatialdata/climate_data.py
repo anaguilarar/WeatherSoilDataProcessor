@@ -596,7 +596,8 @@ class ClimateDataDownload(object):
         downloader_config = {
             'wind_speed': {'func': self._get_wind_speed, 'params': {}},
             'vapour_pressure': {'func': self._get_vapour_pressure, 'params': {}},
-            'relative_humidity': {'func': self._get_relative_humidity, 'params': {}},
+            'relative_humidity_max': {'func': self._get_relative_humidity, 'params': {'statistic': 'hrmax'}},
+            'relative_humidity_min': {'func': self._get_relative_humidity, 'params': {'statistic': 'hrmin'}},
             'solar_radiation': {'func': self._get_solar_radiation, 'params': {}},
             'temperature_tmax': {'func': self._get_temperature, 'params': {'statistic': 'tmax'}},
             'temperature_tmin': {'func': self._get_temperature, 'params': {'statistic': 'tmin'}},
@@ -760,9 +761,9 @@ class ClimateDataDownload(object):
         else:
             return None
 
-    def _get_relative_humidity(self, mission = None, urlhost = None, output_path = None, ncores = 10, version = '2_0', **kwargs):
+    def _get_relative_humidity(self, mission:str = None, urlhost:str = None, output_path:str = None, statistic:str = "tmax", ncores:int = 10, version:str = '2_0', **kwargs):
         """
-        function for downloading relativity_humidity data.
+        function for downloading derived relativity_humidity data from AgEra5.
 
         Parameters
         ----------
@@ -772,22 +773,34 @@ class ClimateDataDownload(object):
             The base URL for the data source.
         output_path : str
             The directory to save the downloaded data.
+        statistic : str
+            The statistic to download (e.g., 'hrmax', 'hrmin').
+
         version : str
             AgEra5 product's version default 2_0 other option 1_1
         """
         mission = self.missions()['relative_humidity'] if mission is None else mission
         urlhost = self.download_from()['relative_humidity'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-
-        if mission == 'agera5' and urlhost == 'datacube':
-            request = self._query_config(product = 'datacube', mission = mission, 
-            variable = 'relativehumidity', output_folder= output_path)
-            print('request: {}'.format(request))
-            dc_f = download_file(**request)
-            return dc_f    
+        ## datacube was deprecated for relative humidity because there is no product available yet, but we can implement it when the product is available on datacube
+        # if mission == 'agera5' and urlhost == 'datacube':
+        #     request = self._query_config(product = 'datacube', mission = mission, 
+        #     variable = 'relativehumidity', output_folder= output_path)
+        #     print('request: {}'.format(request))
+        #     dc_f = download_file(**request)
+        #     return dc_f    
 
         if mission == 'agera5' and urlhost == 'agera5':
-            return self._download_agera5_variable(variable='2m_relative_humidity', output_path=output_path, ncores=ncores, version=version)
+            summ_statistic = {
+                'hrmax':["24_hour_maximum"],
+                'hrmin': ["24_hour_minimum"],
+             
+            }
+            
+            key_found = next((var for var in summ_statistic if statistic in var), None)
+            if key_found is None: print("Check the statitisc"); return None
+            return self._download_agera5_variable(variable='2m_relative_humidity_derived', statistic=summ_statistic[key_found],
+                                                  output_path=output_path, ncores=ncores, version=version)
         else:
             return None
     
@@ -809,9 +822,6 @@ class ClimateDataDownload(object):
         mission = self.missions()['solar_radiation'] if mission is None else mission
         urlhost = self.download_from()['solar_radiation'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-
-        if mission == 'agera5' and urlhost == 'datacube':
-            raise ValueError("There is no solar radiation product on data cube implemention yet")
 
         if mission == 'agera5' and urlhost == 'agera5':
             return self._download_agera5_variable(
@@ -835,14 +845,14 @@ class ClimateDataDownload(object):
         mission = self.missions()['precipitation'] if mission is None else mission
         urlhost = self.download_from()['precipitation'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
+        ## datacube was deprecated for relative humidity because there is no product available yet, but we can implement it when the product is available on datacube
+        # if mission == 'chirps' and urlhost == 'datacube':
 
-        if mission == 'chirps' and urlhost == 'datacube':
-
-            request = self._query_config(product = 'datacube', mission = 'chirps', 
-            variable = 'precipitation', output_folder= output_path)
-            print('request: {}'.format(request))
-            dc_f = download_file(**request)
-            return dc_f        
+        #     request = self._query_config(product = 'datacube', mission = 'chirps', 
+        #     variable = 'precipitation', output_folder= output_path)
+        #     print('request: {}'.format(request))
+        #     dc_f = download_file(**request)
+        #     return dc_f        
         
         if mission == 'chirps' and urlhost == 'chirps':
             chirps = CHIRPS_download()
@@ -869,12 +879,12 @@ class ClimateDataDownload(object):
         mission = self.missions()['temperature'] if mission is None else mission
         urlhost = self.download_from()['temperature'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-        
-        if mission == 'agera5' and urlhost == 'datacube':
-            url = self._urls['datacube']
-            request = self._query_config(product = 'datacube', mission = 'agera5', variable = 'temperature', output_folder= output_path)
-            print('request: {}'.format(request))
-            dc_f = download_file(*request)
+        ## datacube was deprecated for relative humidity because there is no product available yet, but we can implement it when the product is available on datacube
+        # if mission == 'agera5' and urlhost == 'datacube':
+        #     url = self._urls['datacube']
+        #     request = self._query_config(product = 'datacube', mission = 'agera5', variable = 'temperature', output_folder= output_path)
+        #     print('request: {}'.format(request))
+        #     dc_f = download_file(*request)
 
         if mission == 'agera5' and urlhost == 'agera5':
             summ_statistic = {
@@ -970,8 +980,7 @@ class MLTWeatherDataCube(DataCubeBase):
             for d in tqdm.tqdm(self._query_dates.keys()):
                 dir_single_date_path = self.query_date(d)
                 xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, **kwargs)
-                #dval = datetime.strptime(d, '%Y%m%d') 
-                #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
+                
                 if "crs" in xrsingledate.attrs:
                     crs = xrsingledate.attrs["crs"]
                 else:
