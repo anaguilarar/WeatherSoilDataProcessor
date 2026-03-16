@@ -11,7 +11,7 @@ import zipfile
 import numpy as np
 
 import xarray
-from .gis_functions import list_tif_2xarray,resample_xarray,reproject_xrdata
+from .gis_functions import list_tif_2xarray,resample_xarray,reproject_xrdata, numpy_to_xarray
 
 
 def download_file(start_date:str,
@@ -130,6 +130,13 @@ def stack_xrdata_variable(xrdata, xrrefence, xrefdim_name, yrefdim_name,method, 
         resampled_data = resampled_data[variable_name].values
         return resampled_data
     
+def set_crs(xrdata, crs):
+
+    if hasattr(crs, "to_epsg") and crs.to_epsg() is not None:
+        xrdata.attrs["crs"] = f"EPSG:{crs.to_epsg()}"
+    elif hasattr(crs, "to_string"):
+        xrdata.attrs["crs"] = crs.to_string()
+    return xrdata
 
 def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
                        verbose = False, method: str = 'linear', target_crs = None):
@@ -141,7 +148,6 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
     listvariables.remove(reference_variable)
 
     xr_reference = dict_xr[reference_variable].copy()
-
     target_crs = target_crs if target_crs is not None else xr_reference.rio.crs
     if len(xr_reference.sizes.keys()) >= 3 and only_use_first_date:
         xr_reference = check_depth_name_dims(xr_reference)
@@ -158,7 +164,11 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
     xr_reference = set_xr_attributes(xr_reference, xdimref_name = xdimref_name, ydimref_name = ydimref_name)
     metadata = xr_reference.attrs
 
-    variable_name = list(xr_reference.data_vars.keys())[0]
+    for i in list(xr_reference.data_vars.keys()):
+        if i != 'spatial_ref':
+            variable_name = i
+            break
+
     resampled_list = [xr_reference[variable_name].values]
     for var, xr_data in dict_xr.items():
         if var == reference_variable:
@@ -167,14 +177,17 @@ def resample_variables(dict_xr,reference_variable = None, only_use_first_date = 
         resampled_list.append(resampled_data)
         if verbose: print('{} resampled ..'.format(var))
 
-    
-    return list_tif_2xarray(resampled_list, metadata['transform'], 
-                    crs = metadata['crs'], nodata=-9999, 
-                    bands_names = [reference_variable]+listvariables,
-                    dimsformat = 'CHW',
-                    dimsvalues = {'x': xr_reference[xdimref_name].values, 
-                                'y': xr_reference[ydimref_name].values})
-    
+    datatest= numpy_to_xarray(resampled_list, metadata['transform'], crs = metadata['crs'], var_name = [reference_variable]+listvariables)
+    datatest = set_crs(datatest, target_crs)
+
+    return datatest
+    #return list_tif_2xarray(resampled_list, metadata['transform'], 
+    #               crs = metadata['crs'], nodata=-9999, 
+    #               bands_names = [reference_variable]+listvariables,
+    #               dimsformat = 'CHW',
+    #               dimsvalues = {'x': xr_reference[xdimref_name].values, 
+    #                           'y': xr_reference[ydimref_name].values})
+
 
 def compress_file(input_filepath: str, output_zip_filepath: str) -> None:
     """

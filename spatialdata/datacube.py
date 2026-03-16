@@ -137,7 +137,7 @@ class DataCubeBase():
                                                     reference_variable=reference_variable,
                                                      **kwargs)
         
-        return resampled_data.where(resampled_data != -9999, np.nan)
+        return resampled_data
     
 
 

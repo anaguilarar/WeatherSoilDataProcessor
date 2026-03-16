@@ -471,28 +471,54 @@ def numpy_to_xarray(stacked_arrays, transform, crs, var_name="precipitation"):
     if data.ndim == 2:
         data = data[np.newaxis, ...] # ensure depth dimension exists
     depth, height, width = data.shape
-    
-    # Re-build coordinates explicitly from your Transform
-    # 0.5 shift guarantees X, Y coordinates align perfectly with pixel centers
     xs = (np.arange(width) + 0.5) * transform.a + transform.c
     ys = (np.arange(height) + 0.5) * transform.e + transform.f
     # Create the native DataArray
-    da = xarray.DataArray(
-        data=data,
-        dims=["date", "y", "x"],
-        coords={
-            "date": np.arange(depth), # Note: you can pass actual datetimes here!
-            "y": ys,
-            "x": xs
-        },
-        name=var_name
-    )
     
-    # Seal in projection settings automatically utilizing the `.rio` accessor
-    da = da.rio.write_crs(crs)
-    da = da.rio.write_transform(transform)
-    # Return as an xarray Dataset
-    return da.to_dataset()
+    metadata = {
+        'transform': transform,
+        'crs': crs,
+        'width': width,
+        'height': height,
+    }
+    if isinstance(var_name, list):
+        da = xarray.Dataset()
+        for i, var in enumerate(var_name):
+
+            da[var] = xarray.DataArray(
+                data=data[i],
+                dims=["y", "x"],
+                name=var
+            )
+
+            da[var] = da[var].assign_coords({
+                    "y": ys,
+                    "x": xs
+                })
+            #da[var] = da[var].rio.write_crs(crs)
+            #da[var] = da[var].rio.write_transform(transform)
+        da = da.rio.write_crs(crs)
+        da = da.rio.write_transform(transform)
+        da.attrs = metadata
+        return da
+    else:
+        da = xarray.DataArray(
+            data=data,
+            dims=["date", "y", "x"],
+            coords={
+                "date": np.arange(depth), # Note: you can pass actual datetimes here!
+                "y": ys,
+                "x": xs
+            },
+            name=var_name
+        )
+        
+        # Seal in projection settings automatically utilizing the `.rio` accessor
+        da = da.rio.write_crs(crs)
+        da = da.rio.write_transform(transform)
+        da.attrs = metadata
+        # Return as an xarray Dataset
+        return da.to_dataset()
 
 def list_tif_2xarray(listraster:List[np.ndarray], transform: Affine, 
                      crs: str, nodata: int=0, 
@@ -821,7 +847,6 @@ def transform_fromxy(x: np.ndarray,
     if spr is None:
         sprx = abs(x[1]- x[0])
         spry = abs(y[1]- y[0])
-        print(sprx, spry)
     elif type(spr) is not list:
         sprx = spr
         spry = spr

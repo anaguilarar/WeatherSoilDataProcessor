@@ -40,7 +40,7 @@ from .gis_functions import (
     numpy_to_xarray,
     read_raster_data
 )
-from .utils import download_file
+from .utils import download_file, set_crs
 
 
 def transform_dates_for_AgEraquery(
@@ -305,21 +305,19 @@ class CHIRPS_download:
                 date_str = '{}.{}.{}'.format(year, month,day)
                 urlpath = self.set_url(year, date_str)
                 print(urlpath)
+                fnf_outputpath = os.path.join(output_path,year, 'chirps_precipitation_{}{}{}.nc'.format(year,month,day))
+                if os.path.exists(fnf_outputpath): continue
                 with rasterio.open(urlpath) as src:
                    meta = src.profile
                    masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
                    stackimages.append(masked)
 
-                #height = masked.shape[1]
-                #width = masked.shape[2]
-                
                 xrm = numpy_to_xarray(stackimages, mask_transform, crs=str(meta['crs']), var_name='precipitation')
                 # xda = rio.open_rasterio(urlpath)
-                print(xrm)
                 # clipped_xda = xda.rio.clip(gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crs=str(xda.rio.crs), drop=True)
                 # clipped_xda.name = "precipitation"
                 # xrm = clipped_xda.to_dataset()
-                xrm.to_netcdf(os.path.join(output_path,year, 'chirps_precipitation_{}{}{}.nc'.format(year,month,day)))
+                xrm.to_netcdf(fnf_outputpath)
 
         return os.path.join(output_path,year)
         
@@ -974,6 +972,12 @@ class MLTWeatherDataCube(DataCubeBase):
                 xrsingledate = self.stack_mlt_data(dir_single_date_path, reference_variable=reference_variable, **kwargs)
                 #dval = datetime.strptime(d, '%Y%m%d') 
                 #xrsingledate = self.add_date_dim(xrsingledate, dim_value=dval)
+                if "crs" in xrsingledate.attrs:
+                    crs = xrsingledate.attrs["crs"]
+                else:
+                    crs = xrsingledate.rio.crs
+
+                xrsingledate = set_crs(xrsingledate, crs)
                 xr_dict[d] = xrsingledate
         else:
             with tqdm.tqdm(total=len(list(self._query_dates.keys()))) as pbar:
