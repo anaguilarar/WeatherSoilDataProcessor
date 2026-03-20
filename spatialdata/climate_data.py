@@ -176,7 +176,6 @@ def download_mlt_data_from_agera5(
     
     if statistic is not None: query_dict.update({"statistic":  statistic})
     if time is not None: query_dict.update({"time":  time})
-        
     file_path_peryear = {}
     
     if ncores>0:
@@ -629,9 +628,8 @@ class ClimateDataDownload(object):
                     'version': version,
                     **config['params']
                 }
-                if 'relative_humidity' in var: params.update({'time':info.get('time', None)})
-                file_paths = meteo_var_func(**params)
                 
+                file_paths = meteo_var_func(**params)
             else:
                 print(f"Variable '{var}' is not implemented yet.")
                 file_paths = None
@@ -814,7 +812,7 @@ class ClimateDataDownload(object):
         else:
             return None
     
-    def _get_relative_humidity(self, mission:str = None, urlhost:str = None, output_path:str = None, time:str = "tmax", ncores:int = 10, version:str = '2_0', **kwargs):
+    def _get_relative_humidity(self, mission:str = None, urlhost:str = None, output_path:str = None, time:str = "12_00", ncores:int = 10, version:str = '2_0', **kwargs):
         """
         function for downloading relativity_humidity data from AgEra5.
 
@@ -828,8 +826,6 @@ class ClimateDataDownload(object):
             The directory to save the downloaded data.
         time : str
             The time where data was collected (e.g., '06_00', '09_00', '12_00', '15_00', '18_00').
-
-
         version : str
             AgEra5 product's version default 2_0 other option 1_1
         """
@@ -841,8 +837,8 @@ class ClimateDataDownload(object):
 
             if isinstance(time, str): time = [time]
             
-            return self._download_agera5_variable(variable='2m_relative_humidity', time=time,
-                                                  output_path=output_path, ncores=ncores, version=version)
+            return self._download_agera5_variable(variable='2m_relative_humidity', 
+                                                  output_path=output_path, ncores=ncores, version=version, time=time)
         else:
             return None
         
