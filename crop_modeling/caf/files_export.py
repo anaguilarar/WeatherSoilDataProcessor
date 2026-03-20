@@ -57,9 +57,9 @@ class CAFSoil(TableDataTransformer):
     @property
     def soilgrid_scaling_factors(self):
         return {
-            "clay": 0.1,
-            "silt": 0.1,
-            "nitrogen": 0.01,
+            "clay": 0.1, # to convert to percentage
+            "silt": 0.1, # to convert to percentage
+            "nitrogen": 0.01, # cg/kg to g/kg
             "bdod": 0.01,
             "cfvo": 0.01,
             "phh2o": 0.1,
