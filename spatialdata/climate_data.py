@@ -535,7 +535,8 @@ class ClimateDataDownload(object):
             'solar_radiation': 'agera5',
             'wind_speed': 'agera5',
             'relative_humidity': 'agera5',
-            'vapour_pressure': 'agera5'
+            'vapour_pressure': 'agera5',
+            'reference_evapotranspiration': 'agera5'
             }
         
     def missions(self):
@@ -554,7 +555,8 @@ class ClimateDataDownload(object):
             'wind_speed': 'agera5',
             'solar_radiation': 'agera5',
             'relative_humidity': 'agera5',
-            'vapour_pressure': 'agera5'
+            'vapour_pressure': 'agera5',
+            'reference_evapotranspiration': 'agera5'
         }
 
     @staticmethod
@@ -598,6 +600,7 @@ class ClimateDataDownload(object):
         downloader_config = {
             'wind_speed': {'func': self._get_wind_speed, 'params': {}},
             'vapour_pressure': {'func': self._get_vapour_pressure, 'params': {}},
+            'vapour_pressure_defficit': {'func': self._get_vapour_pressure_deficit, 'params': {}},
             'relative_humidity_max': {'func': self._get_relative_humidity_derived, 'params': {'statistic': 'hrmax'}},
             'relative_humidity_min': {'func': self._get_relative_humidity_derived, 'params': {'statistic': 'hrmin'}},
             'relative_humidity_06': {'func': self._get_relative_humidity, 'params': {'time': ['06_00']}}, 
@@ -605,8 +608,9 @@ class ClimateDataDownload(object):
             'relative_humidity_12': {'func': self._get_relative_humidity, 'params': {'time': ['12_00']}}, 
             'relative_humidity_15': {'func': self._get_relative_humidity, 'params': {'time': ['15_00']}}, 
             'relative_humidity_18': {'func': self._get_relative_humidity, 'params': {'time': ['18_00']}}, 
-        
+            'reference_evapotranspiration': {'func': self._get_reference_evapotranspiration, 'params': {}},
             'solar_radiation': {'func': self._get_solar_radiation, 'params': {}},
+            'dew_point_temperature': {'func': self._get_dew_point_temperature, 'params': {'statistic': 'tmean'}},
             'temperature_tmax': {'func': self._get_temperature, 'params': {'statistic': 'tmax'}},
             'temperature_tmin': {'func': self._get_temperature, 'params': {'statistic': 'tmin'}},
             'precipitation': {'func': self._get_precipitation, 'params': {}},
@@ -733,9 +737,7 @@ class ClimateDataDownload(object):
         mission = self.missions()['wind_speed'] if mission is None else mission
         urlhost = self.download_from()['wind_speed'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-        if mission == 'agera5' and urlhost == 'datacube':
-            raise ValueError("There is no wind_speed product on data cube implemention yet")
-        
+
         if mission == 'agera5' and urlhost == 'agera5':
             return self._download_agera5_variable(variable='10m_wind_speed', statistic = statistic if isinstance(statistic, list) else [statistic],
                                            output_path=output_path, ncores=ncores, version=version)
@@ -760,14 +762,38 @@ class ClimateDataDownload(object):
         mission = self.missions()['vapour_pressure'] if mission is None else mission
         urlhost = self.download_from()['vapour_pressure'] if urlhost is None else urlhost
         output_path = self.output_folder if output_path is None else output_path
-        if mission == 'agera5' and urlhost == 'datacube':
-            raise ValueError("There is no vapour_pressure product on data cube implemention yet")
         
         if mission == 'agera5' and urlhost == 'agera5':
             return self._download_agera5_variable(variable='vapour_pressure', statistic = statistic if isinstance(statistic, list) else [statistic],
                                            output_path=output_path, ncores=ncores, version=version)
         else:
             return None
+    
+    def _get_vapour_pressure_deficit(self, mission = None, urlhost = None, output_path = None, statistic = "24_hour_mean", version = '2_0', ncores:int = 1):
+        """
+        function for downloading vapour_pressure_deficit data.
+
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
+        """
+        mission = self.missions()['vapour_pressure'] if mission is None else mission
+        urlhost = self.download_from()['vapour_pressure'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+
+        if mission == 'agera5' and urlhost == 'agera5':
+            return self._download_agera5_variable(variable='vapour_pressure_deficit_at_maximum_temperature', statistic = statistic if isinstance(statistic, list) else [statistic],
+                                           output_path=output_path, ncores=ncores, version=version)
+        else:
+            return None
+        
 
     def _get_relative_humidity_derived(self, mission:str = None, urlhost:str = None, output_path:str = None, statistic:str = "tmax", ncores:int = 10, version:str = '2_0', **kwargs):
         """
@@ -842,7 +868,6 @@ class ClimateDataDownload(object):
         else:
             return None
         
-    
     def _get_solar_radiation(self, mission = None, urlhost = None, output_path = None, ncores = 10, version = '2_0'):
         """
         Placeholder function for downloading solar radiation data.
@@ -890,7 +915,6 @@ class ClimateDataDownload(object):
             chirps = CHIRPS_download()
             return chirps.download_chirps(self.aoi_extent,self._init_date,self._ending_date, output_path=output_path, ncores = 0)
 
-
     def _get_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "tmax", ncores = 10, version = '2_0'):
         """
         Placeholder function for downloading temperature data (e.g., max or min).
@@ -928,6 +952,66 @@ class ClimateDataDownload(object):
         else:
             return None
 
+    def _get_reference_evapotranspiration(self, mission = None, urlhost = None, output_path = None, ncores = 10, version = '2_0'):
+        """
+        Placeholder function for downloading reference evapotranspiration data.
+
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
+        """
+        mission = self.missions()['reference_evapotranspiration'] if mission is None else mission
+        urlhost = self.download_from()['reference_evapotranspiration'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+
+        if mission == 'agera5' and urlhost == 'agera5':
+            return self._download_agera5_variable('reference_evapotranspiration', None, output_path, ncores, version)
+        else:
+            return None
+    
+    def _get_dew_point_temperature(self, mission = None, urlhost = None, output_path = None, statistic = "mean", ncores = 10, version = '2_0'):
+        """
+        Placeholder function for downloading dew point temperature data.
+
+        Parameters
+        ----------
+        mission : str
+            The mission associated with the data (e.g., 'agera5').
+        urlhost : str
+            The base URL for the data source.
+        output_path : str
+            The directory to save the downloaded data.
+        statistic : str
+            The temperature statistic to retrieve (e.g., 'tmax' for maximum temperature).
+        version : str
+            AgEra5 product's version default 2_0 other option 1_1
+        """
+        
+        mission = self.missions()['temperature'] if mission is None else mission
+        urlhost = self.download_from()['temperature'] if urlhost is None else urlhost
+        output_path = self.output_folder if output_path is None else output_path
+
+        if mission == 'agera5' and urlhost == 'agera5':
+            summ_statistic = {
+                'tmean': ["24_hour_mean"]
+            }
+            
+            key_found = next((var for var in summ_statistic if statistic in var), None)
+            if key_found is None: print("Check the statitisc"); return None
+            
+            return self._download_agera5_variable('2m_dewpoint_temperature', statistic=summ_statistic[key_found], 
+                                                    output_path=output_path, ncores=ncores, version=version)
+            
+        else:
+            return None
+        
             
 
 class MLTWeatherDataCube(DataCubeBase):
