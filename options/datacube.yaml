@@ -1,0 +1,32 @@
+GENERAL_INFO:
+  projected_crs: 'ESRI:54052'
+  suffix: 'mwi'
+
+SPATIAL_VECTOR:
+  boundaries: null
+
+WEATHER:
+  setup_parameters:
+    paths:
+      precipitation: "weather/precipitation_hnd_raw"
+      srad: "weather/solar_radiation_hnd_raw"
+      tmax: "weather/temperature_tmax_hnd_raw"
+      tmin: "weather/temperature_tmin_hnd_raw"
+  
+  crs: 'EPSG:4326'
+  period: ['2000-01-01', '2019-12-31']
+  reference_variable: 'precipitation'
+  data_cube_path: null
+
+SOIL:
+  setup_parameters:
+    path: null
+    variables: ["clay",  "sand", "silt", "cec", "bdod", "cfvo", "nitrogen", "phh2o", "soc","wv0010","wv0033", "wv1500"]
+    depths: ["0-5","5-15","15-30","30-60"]
+    crs: 'ESRI:54052'
+    reference_variable: 'clay'
+  data_cube_path: null
+      
+
+
+
