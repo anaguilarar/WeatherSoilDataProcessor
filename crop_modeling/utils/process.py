@@ -17,7 +17,7 @@ def model_selection(model: str, working_path: str):
     Parameters
     ----------
     model : str
-        Model type, either 'dssat' or 'caf'.
+        Model type, either 'dssat', 'caf', 'simple_model', and 'banana_n'.
     working_path : str
         Path to the working directory.
     config : dict
@@ -40,6 +40,10 @@ def model_selection(model: str, working_path: str):
         from ..simple_model.base import PySimpleModel
 
         BaseClass = PySimpleModel
+    elif model == "banana_n":
+        from ..banana_n.base import PyBananaN
+
+        BaseClass = PyBananaN
 
     else:
         raise ValueError(
@@ -160,6 +164,12 @@ def summarize_datacube_as_df(
     
     src_crs = get_crs_fromxarray(xrdata)
     
+    if pixel_scale:
+        ddf = xrdata.to_dataframe().reset_index().dropna()
+        if project_to is not None:
+            ddf = project_dataframe(ddf, src_crs, target_crs=project_to)
+        return ddf
+        
     if group_by is None:
         unique_categories= [0]
         group_by= 'group'
@@ -167,28 +177,21 @@ def summarize_datacube_as_df(
         if group_by_layer is None:
             raise ValueError("'group_by_layer' must be provided when 'group_by' is set.")
         unique_categories = np.unique(group_by_layer)
+
+    del  xrdata
+    npdata = summarise_array_by_group(npdata, group_by_layer)
+    v,g,d = npdata.shape
+    ddf = []
+    for i in range(g):
+        df = pd.DataFrame(npdata[:,i].reshape(v, d).swapaxes(0,1), columns=datavar_names)
+        if depth_vals is not None: df[dimension_name] = depth_vals
+        df['x'] = xval
+        df['y'] = yval
+        df[group_by] = unique_categories[i]
+        ddf.append(df)
         
-    if pixel_scale:
-        ddf = xrdata.to_dataframe().reset_index().dropna()
-        del  xrdata
-    else:
-        del  xrdata
-        npdata = summarise_array_by_group(npdata, group_by_layer)
-        v,g,d = npdata.shape
-        ddf = []
-        for i in range(g):
-            df = pd.DataFrame(npdata[:,i].reshape(v, d).swapaxes(0,1), columns=datavar_names)
-            if depth_vals is not None: df[dimension_name] = depth_vals
-            df['x'] = xval
-            df['y'] = yval
-            df[group_by] = unique_categories[i]
-            ddf.append(df)
-            
-        ddf = pd.concat(ddf)
-    
-    if project_to is not None:
-        ddf = project_dataframe(ddf, src_crs, target_crs=project_to)
-        
+    ddf = pd.concat(ddf)
+
     return ddf
 
 

@@ -276,6 +276,7 @@ class FertiOrganizer():
             ferti_schedule[f'cycle_treatment_{i+1}'] = self.create_event_cycle_fert_schedule(i, application_days, n_amounts)
         
         return ferti_schedule
+        
 class CAFManagement():
     """
     Helper to build CAF management templates (fertilization, pruning, thinning).

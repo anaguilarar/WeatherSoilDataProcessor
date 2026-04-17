@@ -762,7 +762,7 @@ def resample(xrdata, newx, newy, target_transform, method = 'nearest', xdim_name
 
     return dst_re
 
-def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x', yrefdim_name = 'y', target_crs = None):
+def resample_xarray(xarraydata:xarray.Dataset, xrreference, method='linear', xrefdim_name = 'x', yrefdim_name = 'y', target_crs = None):
     """
     Function to resize an xarray data and update its attributes based on another xarray reference 
     this script is based on the xarray's interp() function
@@ -810,6 +810,7 @@ def resample_xarray(xarraydata, xrreference, method='linear', xrefdim_name = 'x'
     xrresampled.attrs['transform'] = get_transform_fromxy(xrref[xrefdim_name].values,
                                                           xrref[yrefdim_name].values)#transform_fromxy(xrref[xrefdim_name].values,xrref[yrefdim_name].values, xrref.attrs['transform'][0])[0]
     #xrresampled.attrs['transform'] = xrref.rio.transform()
+
     for i in range(len(list(xrresampled.keys()))):
         shaperast = xrresampled[list(xrresampled.keys())[i]].shape
         if len(shaperast) > 1:

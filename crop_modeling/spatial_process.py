@@ -11,6 +11,7 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 from typing import Dict, Optional, Union, Tuple
 import xarray
+import rioxarray as rio
 
 from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset, summarize_datacube_as_df, model_selection
 from .utils.u_soil import get_layer_texture, get_soil_datacube
@@ -238,6 +239,8 @@ class SpatialData():
         if filepath.endswith('.nc'):
             with xarray.open_dataset(filepath, engine = engine, chunks  = 'auto') as ds:
                 data = ds.copy()
+        elif filepath.endswith('.tif'):
+            data = rio.open_rasterio(filepath)
         elif filepath.endswith('.pickle'):
             with open(filepath, 'rb') as fn:
                 data = pickle.load(fn)
@@ -441,7 +444,11 @@ class SpatialCM():
     @property
     def dem(self):
         if self._dem is None:
-            self._dem = self._read_geosp_data('dem_path')
+            dem = self._read_geosp_data('dem_path')
+            if isinstance(dem, xarray.DataArray):
+                self._dem = dem.to_dataset(name = 'dem')
+            else:
+                self._dem = dem
             
         return self._dem  
     
@@ -497,12 +504,12 @@ class SpatialCM():
             roi = roi.to_crs(self.climate.rio.crs)
             buffer = self._buffer(roi)
             weatherm, soilm = get_roi_data(roi, self.climate, self.soil, scale_factor= self.config.SPATIAL_INFO.scale_factor, buffer= buffer)
-        if demm is None and self.model.name in ['caf','simple_model']:
+        if demm is None and self.model.name in ['caf','simple_model', 'banana_n']:
             if verbose: logging.info("Creating DEM file")
             roi = roi.to_crs(self.climate.rio.crs)
             buffer = self._buffer(roi)
             assert self.dem is not None, "Please provide DEM data, check DEM path "
-            demm = masking_rescaling_xrdata(self.dem, roi, buffer=buffer, resample_ref =weatherm.isel(date = 0), return_original_size=True, method = 'nearest')
+            demm = masking_rescaling_xrdata(self.dem, roi, buffer=buffer, resample_ref = weatherm.isel(date = 0), return_original_size=True, method = 'nearest')
             demm.attrs['crs'] = get_crs_fromxarray(weatherm)
             
         return weatherm, soilm, demm
@@ -580,15 +587,28 @@ class SpatialCM():
             # export data as dssat files
             self.process_dssat_files(group_codes, crs = crs)
             
-        if self.model.name in ['caf', 'simple_model']:
-            group_bylayer = self._get_group_layer() if self._group_by else None
-            for data_path, datatype in zip([self._weather_tmppath, self._soil_tmppath, self._dem_tmppath],['climate', 'soil', 'dem']):
+        if self.model.name in ['caf', 'simple_model', 'banana_n']:
+            self.process_cm_files(group_codes, crs = crs)
+
+        return self._tmp_path
+    
+    def process_cm_files(self, group_codes, crs: str = "EPSG:4326"):
+        pixel_scale =  self._group_by == 'pixel'
+
+        if not pixel_scale:
+            
+            group_bylayer = self._get_group_layer(project_to=crs) if self._group_by else None
+            
+            for data_path,datatype in zip([self._weather_tmppath, self._soil_tmppath, self._dem_tmppath],['climate', 'soil', 'dem']):
                 if data_path is not None:
                     self.model.from_datacube_to_files(xrdata_path = data_path, data_source= datatype, target_crs=crs, group_by = self._group_by, group_by_layer = group_bylayer, group_codes = group_codes,
                                                 outputpath= self._tmp_path)
-                
-        return self._tmp_path
-    
+        else:
+            xrref, pxs_withdata = self.create_env_variables_at_pixellevel(target_crs =crs)
+            pd.DataFrame(pxs_withdata, columns = ['pixel','x','y']).to_csv(os.path.join(self._tmp_path, 'pixel_coords.csv'))
+            xrref[list(xrref.data_vars)[0]].rio.to_raster(os.path.join(self._tmp_path, 'ref_raster.tif'))
+            
+
     def _get_group_layer(self, project_to: str = "EPSG:4326"):
         
         if self._group_by:
@@ -624,24 +644,34 @@ class SpatialCM():
                 
         if pixel_scale:
             xrref, pxs_withdata = self.create_env_variables_at_pixellevel(target_crs =crs)
+            self.check_dssat_env_paths()
             pd.DataFrame(pxs_withdata, columns = ['pixel','x','y']).to_csv(os.path.join(self._tmp_path, 'pixel_coords.csv'))
             xrref[list(xrref.data_vars)[0]].rio.to_raster(os.path.join(self._tmp_path, 'ref_raster.tif'))
             
                 
-    def _process_individual_pixel(self, env_list, env_list_names, idpx, x, y):
+    def _process_individual_pixel(self, env_list, env_list_names, idpx, x, y, convert_beforetodf = True):
         if not np.isnan(x) and not np.isnan(y):
             #x, y = float(commoncoords[idpix].split('_')[0]),float(commoncoords[idpix].split('_')[1])
             for data, datatype in zip(env_list,env_list_names):
-                dfdata = data.sel(x = x, y = y, method = 'nearest').to_dataframe().reset_index().dropna()
-                if dfdata.shape[0]>0:
-                    self.model.from_datacube_to_files(dfdata, data_source=datatype, 
+                if  data is None: continue
+                if convert_beforetodf:
+                    dfdata = data.sel(x = x, y = y, method = 'nearest').to_dataframe().reset_index().dropna()
+                    if dfdata.shape[0]>0:
+                        self.model.from_datacube_to_files(dfdata, data_source=datatype, 
                                                 outputpath= self._tmp_path,
                                                 country = self.country.upper(),
                                                 site = self.site,
                                                 sub_working_path = str(idpx), verbose = False)
+
+                else:
+                    data = data.assign_coords({'pixel': [str(idpx)]})
+                    self.model.from_datacube_to_files(data.sel(x = x, y = y, method = 'nearest'), 
+                            data_source= datatype, group_by = self._group_by, pixel_scale = True,
+                            outputpath= self._tmp_path)
+                
         return x, y
     
-    def create_env_variables_at_pixellevel(self, target_crs:str = "EPSG:4326", engine: str = 'netcdf4' ):
+    def create_env_variables_at_pixellevel(self, target_crs:str = "EPSG:4326", engine: str = 'netcdf4'):
         """
         create environment variables for running crop models at pixel level
 
@@ -658,10 +688,16 @@ class SpatialCM():
         
         weatherm = xarray.open_dataset(self._weather_tmppath, engine = engine)
         soilm = xarray.open_dataset(self._soil_tmppath, engine = engine)
+        if self._dem_tmppath:
+            demm = xarray.open_dataset(self._dem_tmppath, engine = engine)
+        else:
+            demm = None
         #reproject
         if target_crs:
             soilm = soilm.rio.reproject(target_crs)
             weatherm = weatherm.rio.reproject(target_crs)
+            if self._dem_tmppath:
+                demm = demm.rio.reproject(target_crs)
             
         soilm = soilm.where(soilm[list(soilm.data_vars)[0]]<3.4028234663852886e+20, np.nan)
         weatherm = weatherm.where(weatherm[list(weatherm.data_vars)[0]]<3.4028234663852886e+20, np.nan)
@@ -677,8 +713,9 @@ class SpatialCM():
         #for idpix in range(commoncoords.shape[0]):
         with tqdm(total=len(pxswithdata)) as pbar:
             with concurrent.futures.ThreadPoolExecutor(max_workers=self._ncores) as executor:
-                future_to_tr ={executor.submit(self._process_individual_pixel, [weatherm, soilm], ['climate', 'soil'],
-                                            idpx, xgrid[idpx], ygrid[idpx]): (idpx) for idpx in pxswithdata}
+                ## TODO standarize dssat an the other iit must pass an xarray 
+                future_to_tr ={executor.submit(self._process_individual_pixel, [weatherm, soilm, demm], ['climate', 'soil', 'dem'],
+                                            idpx, xgrid[idpx], ygrid[idpx], self.model.name == 'dssat'): (idpx) for idpx in pxswithdata}
 
                 for future in concurrent.futures.as_completed(future_to_tr):
                     idpx = future_to_tr[future]
@@ -690,7 +727,7 @@ class SpatialCM():
                             print(f"Request for treatment {idpx} generated an exception: {exc}")
                     pbar.update(1)
         del soilm, weatherm
-        self.check_dssat_env_paths()
+        
         return xrref, processed_pxs
 
     def set_up_folders(self, site = None) -> None:

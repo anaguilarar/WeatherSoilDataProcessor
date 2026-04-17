@@ -991,15 +991,21 @@ class Weather():
         self.rain = None
         self.vapour_pressure = None
         self.julian_day = None
+    
+    @property
+    def weather(self):
+        if self._weather is None and self.path is not None:
+            self._weather = pd.read_csv(self.path)
         
+        return self._weather
+    
     
     def __init__(self, path:str = None, df:pd.DataFrame = None, station: Station = None):
-        if path and os.path.exists(path):
-            self.weather = pd.read_csv(path)
-        elif df is not None:
-            self.weather = df   
-        else:
-            self.weather = None
+
+        self._weather = None
+        self.path = path
+        if df is not None:
+            self._weather = df   
         
         self.station =station
         

@@ -283,6 +283,7 @@ class TableDataTransformer(ABC):
         codes: Optional[Dict[int, str]] = None,
         target_crs: str = "EPSG:4326",
         outputpath: str = None,
+        pixel_scale: bool = False
     ):
         """
         Process and export data as CSV files grouped by the specified attribute.
@@ -302,9 +303,11 @@ class TableDataTransformer(ABC):
             Target coordinate reference system, by default "EPSG:4326".
         outputpath : str
             Path to save the output CSV files.
+        pixel_scale : bool
+            The process is done at pixel level 
         """
         dfdata = summarize_datacube_as_df(
-            xrdata = self.xrdata, xrdata_path= self.xrdata_path, dimension_name=depth_var_name, group_by=group_by,group_by_layer = group_by_layer,  project_to=target_crs
+            xrdata = self.xrdata, xrdata_path= self.xrdata_path, dimension_name=depth_var_name, group_by=group_by,group_by_layer = group_by_layer,  project_to=target_crs, pixel_scale = pixel_scale
         )
         
         if not group_by:
@@ -315,7 +318,8 @@ class TableDataTransformer(ABC):
         dfdata = self.process_data(dfdata)
 
         # Rename columns based on `params_df_names`
-        dfdata = dfdata.rename(columns={v: k for k, v in self.params_df_names.items()})
+        columnsindf = {k: v for k, v in self.params_df_names.items() if v in dfdata.columns}
+        dfdata = dfdata.rename(columns={v: k for k, v in columnsindf.items()})
 
         # Export grouped data
         unique_groups = np.unique(dfdata[group_by].values)
@@ -329,7 +333,7 @@ class TableDataTransformer(ABC):
             )
             if not os.path.exists(group_dir): os.mkdir(group_dir)
             fn = os.path.join(group_dir, f"{self.__class__.__name__.lower()}.csv")
-            subset[list(self.params_df_names.keys())].to_csv(
+            subset[list(columnsindf.keys())].to_csv(
                 fn, index=False
             )
             
