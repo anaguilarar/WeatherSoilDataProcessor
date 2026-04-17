@@ -100,13 +100,54 @@ def check_depth_name_dims(xrdata):
     
     if 'date' in list(xrdata.sizes.keys()):
         xrdata = xrdata.isel({'date': 0})
+        xrdata = xrdata.drop_vars(['date'], errors='ignore')
     elif 'time' in list(xrdata.sizes.keys()):
         xrdata = xrdata.isel({'time': 0})
+        xrdata = xrdata.drop_vars(['time'], errors='ignore')
     elif 'band' in list(xrdata.sizes.keys()):
         xrdata = xrdata.isel({list(xrdata.sizes.keys())[0]: 0})
+        xrdata = xrdata.drop_vars(['band'], errors='ignore')
     else:
         raise ValueError('check depth order')
+    
+    
     return xrdata
+
+# def check_depth_name_dims(xrdata):
+#     """
+#     Selects the first slice of multi-dimensional xarray data (time, date, band, etc.)
+#     to ensure it returns a strictly 2D spatial array (y, x).
+
+#     Parameters
+#     ----------
+#     xrdata : xarray.Dataset or xarray.DataArray
+#         The input Dataset/DataArray.
+
+#     Returns
+#     -------
+#     xarray.Dataset or xarray.DataArray
+#         The 2D spatial Dataset.
+#     """
+    
+#     dims_to_reduce = ['time', 'date', 'band', 'depth', 'z']
+    
+    
+#     existing_dims = [dim for dim in dims_to_reduce if dim in xrdata.dims]
+    
+    
+#     if existing_dims:
+       
+#         slice_dict = {dim: 0 for dim in existing_dims}
+#         xrdata = xrdata.isel(slice_dict)
+        
+#         xrdata = xrdata.drop_vars(existing_dims, errors='ignore')
+        
+#     else:
+#         if len(xrdata.dims) > 2:
+#             raise ValueError(f"El dataset tiene dimensiones desconocidas {list(xrdata.dims)}. "
+#                              f"Asegúrate de que las dimensiones espaciales sean las únicas restantes.")
+            
+#     return xrdata
 
 def set_xr_attributes(xrdata, xdimref_name = 'x', ydimref_name = 'y'):
     if 'transform' not in list(xrdata.attrs.keys()):
@@ -138,55 +179,166 @@ def set_crs(xrdata, crs):
         xrdata.attrs["crs"] = crs.to_string()
     return xrdata
 
-def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
-                       verbose = False, method: str = 'linear', target_crs = None):
+from rasterio.enums import Resampling
+
+# def resample_variables(dict_xr,reference_variable = None, only_use_first_date = True, 
+#                        verbose = False, method: str = 'linear', target_crs = None):
 
     
+#     listvariables = list(dict_xr.keys())
+#     if reference_variable is None:
+#         reference_variable = listvariables[0]
+#     listvariables.remove(reference_variable)
+
+#     xr_reference = dict_xr[reference_variable].copy()
+#     target_crs = target_crs if target_crs is not None else xr_reference.rio.crs
+#     if len(xr_reference.sizes.keys()) >= 3 and only_use_first_date:
+#         xr_reference = check_depth_name_dims(xr_reference)
+#     if str(target_crs) != str(xr_reference.rio.crs):
+#         xr_reference = reproject_xrdata(xr_reference, target_crs)
+
+#     if 'x' in list(xr_reference.sizes.keys()):
+#         xdimref_name , ydimref_name = 'x', 'y'
+#     elif 'lon' in list(xr_reference.sizes.keys()):
+#         xdimref_name , ydimref_name = 'lon', 'lat'
+#     else:
+#         xdimref_name = xdimref_name.isel({list(xdimref_name.sizes.keys())[0]: 0})
+    
+#     xr_reference = set_xr_attributes(xr_reference, xdimref_name = xdimref_name, ydimref_name = ydimref_name)
+#     metadata = xr_reference.attrs
+
+#     for i in list(xr_reference.data_vars.keys()):
+#         if i != 'spatial_ref':
+#             variable_name = i
+#             break
+
+#     resampled_list = [xr_reference[variable_name].values]
+#     for var, xr_data in dict_xr.items():
+#         if var == reference_variable:
+#             continue
+#         resampled_data = stack_xrdata_variable(xr_data, xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date=only_use_first_date)
+#         resampled_list.append(resampled_data)
+#         if verbose: print('{} resampled ..'.format(var))
+
+#     datatest= numpy_to_xarray(resampled_list, metadata['transform'], crs = metadata['crs'], var_name = [reference_variable]+listvariables)
+#     datatest = set_crs(datatest, target_crs)
+
+#     return datatest
+
+def resample_variables(dict_xr,reference_variable = None, 
+                       only_use_first_date = True, 
+                       verbose = False, method: str = 'linear', target_crs = None):
+    
+    resampling_methods = {
+        'nearest': Resampling.nearest,
+        'linear': Resampling.bilinear,
+        'bilinear': Resampling.bilinear,
+        'cubic': Resampling.cubic,
+        'average': Resampling.average
+    }
+    
+    resampling_method = resampling_methods.get(method.lower(), Resampling.nearest)
+
     listvariables = list(dict_xr.keys())
     if reference_variable is None:
         reference_variable = listvariables[0]
     listvariables.remove(reference_variable)
 
-    xr_reference = dict_xr[reference_variable].copy()
-    target_crs = target_crs if target_crs is not None else xr_reference.rio.crs
-    if len(xr_reference.sizes.keys()) >= 3 and only_use_first_date:
-        xr_reference = check_depth_name_dims(xr_reference)
-    if str(target_crs) != str(xr_reference.rio.crs):
-        xr_reference = reproject_xrdata(xr_reference, target_crs)
-
-    if 'x' in list(xr_reference.sizes.keys()):
-        xdimref_name , ydimref_name = 'x', 'y'
-    elif 'lon' in list(xr_reference.sizes.keys()):
-        xdimref_name , ydimref_name = 'lon', 'lat'
-    else:
-        xdimref_name = xdimref_name.isel({list(xdimref_name.sizes.keys())[0]: 0})
+    # 1. Prepare Reference
+    xr_ref = dict_xr[reference_variable].copy()
     
-    xr_reference = set_xr_attributes(xr_reference, xdimref_name = xdimref_name, ydimref_name = ydimref_name)
-    metadata = xr_reference.attrs
+    if len(xr_ref.sizes.keys()) >= 3 and only_use_first_date:
+        xr_ref = check_depth_name_dims(xr_ref)
 
-    for i in list(xr_reference.data_vars.keys()):
-        if i != 'spatial_ref':
-            variable_name = i
-            break
+    if isinstance(xr_ref, xarray.Dataset):
+        for i in list(xr_ref.data_vars.keys()):
+            if i != 'spatial_ref':
+                variable_name = i
+                break
+        xr_ref = xr_ref[variable_name]
+    
+    xr_ref.name = variable_name
+    
+    if target_crs is not None:
+        if str(target_crs) != str(xr_ref.rio.crs):
+            #xr_reference = reproject_xrdata(xr_reference, target_crs)
+            xr_ref = xr_ref.rio.reproject(target_crs, resampling=resampling_method)
 
-    resampled_list = [xr_reference[variable_name].values]
-    for var, xr_data in dict_xr.items():
-        if var == reference_variable:
+
+    xr_ref.rio.write_crs(xr_ref.rio.crs, inplace=True)
+
+    #resampled_list = [xr_reference[variable_name].values]
+    
+    ref_x_dim = xr_ref.rio.x_dim
+    ref_y_dim = xr_ref.rio.y_dim
+    if xr_ref.rio.nodata is None:
+        xr_ref.rio.write_nodata(np.nan, encoded=True, inplace=True)
+
+    processed_xarrays = {variable_name: xr_ref}
+
+    for var_name, xr_data in dict_xr.items():
+        if var_name == variable_name:
             continue
-        resampled_data = stack_xrdata_variable(xr_data, xr_reference, xdimref_name, ydimref_name, method, target_crs, only_use_first_date=only_use_first_date)
-        resampled_list.append(resampled_data)
-        if verbose: print('{} resampled ..'.format(var))
+        
+        if isinstance(xr_data, xarray.Dataset):
+            for i in list(xr_data.data_vars.keys()):
+                if i != 'spatial_ref':
+                    variable_name = i
+                    break
+            xr_data = xr_data[variable_name]
 
-    datatest= numpy_to_xarray(resampled_list, metadata['transform'], crs = metadata['crs'], var_name = [reference_variable]+listvariables)
-    datatest = set_crs(datatest, target_crs)
+        if len(xr_data.sizes.keys()) >= 3 and only_use_first_date:
+            xr_data = check_depth_name_dims(xr_data)
+        
 
-    return datatest
-    #return list_tif_2xarray(resampled_list, metadata['transform'], 
-    #               crs = metadata['crs'], nodata=-9999, 
-    #               bands_names = [reference_variable]+listvariables,
-    #               dimsformat = 'CHW',
-    #               dimsvalues = {'x': xr_reference[xdimref_name].values, 
-    #                           'y': xr_reference[ydimref_name].values})
+        is_native_soilgrids = abs(xr_data.rio.bounds()[0]) > 1000 
+
+        if is_native_soilgrids:
+            # Tell rioxarray the TRUTH: This data is in Goode Homolosine
+            homolosine_crs = '+proj=igh +lat_0=0 +lon_0=0 +datum=WGS84 +units=m +no_defs'
+            xr_data.rio.write_crs(homolosine_crs, inplace=True)
+            if verbose: print(f"Detected native SoilGrids projection for {var_name}")
+        else:
+            # If it's already in small numbers (degrees), assume it matches the reference
+            xr_data.rio.write_crs(xr_ref.rio.crs, inplace=True)
+
+        # if target_crs is not None:
+        #     if str(target_crs) != str(xr_data.rio.crs):
+        #         xr_data = xr_data.rio.reproject(target_crs, resampling=resampling_method)
+        
+        # if xr_data.rio.nodata is None:
+        #     xr_data.rio.write_nodata(np.nan, encoded=True, inplace=True)
+
+        # xr_data.rio.write_crs(xr_ref.rio.crs, inplace=True)
+        data_x_dim = xr_data.rio.x_dim
+        data_y_dim = xr_data.rio.y_dim
+        
+        rename_dict = {}
+        if data_x_dim != ref_x_dim: rename_dict[data_x_dim] = ref_x_dim
+        if data_y_dim != ref_y_dim: rename_dict[data_y_dim] = ref_y_dim
+        
+        if rename_dict:
+            xr_data = xr_data.rename(rename_dict)
+
+        if xr_data.rio.nodata is None:
+            xr_data.rio.write_nodata(np.nan, encoded=True, inplace=True)
+            
+        if xr_ref.rio.nodata is None:
+            xr_ref.rio.write_nodata(np.nan, encoded=True, inplace=True)
+        
+        if xr_data.rio.nodata is None:
+            xr_data.rio.write_nodata(np.nan, encoded=True, inplace=True)
+        resampled_data = xr_data.rio.reproject_match(xr_ref, resampling=resampling_method)
+   
+        
+        resampled_data.name = var_name
+        processed_xarrays[var_name] = resampled_data
+
+
+    dataouput = xarray.merge(list(processed_xarrays.values()), compat='override')
+    dataouput.rio.write_crs(xr_ref.rio.crs, inplace = True)
+    return dataouput
+    
 
 
 def compress_file(input_filepath: str, output_zip_filepath: str) -> None:

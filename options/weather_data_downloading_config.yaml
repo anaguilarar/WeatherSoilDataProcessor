@@ -7,7 +7,30 @@ WEATHER:
     precipitation: 
       mission: chirps
       source: chirps
+      
+    solar_radiation: 
+      mission: agera5
+      source: agera5
 
+    temperature_tmax:
+      mission: agera5
+      source: agera5
+
+    temperature_tmin:
+      mission: agera5
+      source: agera5
+
+    vapour_pressure:
+      mission: agera5
+      source: agera5
+
+    wind_speed:
+      mission: agera5
+      source: agera5
+    
+    reference_evapotranspiration:
+      mission: agera5
+      source: agera5
 
 SPATIAL_INFO:
   spatial_file: null
@@ -16,7 +39,7 @@ SPATIAL_INFO:
 GENERAL:
   suffix: 'guadalupe'
   ncores: 10
-  task: download # datacube
+  task: datacube # download
   reference_variable: 'precipitation'
   export_as_netcdf: False
 
