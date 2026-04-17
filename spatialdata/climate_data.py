@@ -302,7 +302,7 @@ class CHIRPS_download:
         if not os.path.exists(os.path.join(output_path,year)): os.mkdir(os.path.join(output_path,year)) 
         
         for month in self._date[year].keys():
-            stackimages = []
+            
             for day in self._date[year][month]:
                 date_str = '{}.{}.{}'.format(year, month,day)
                 urlpath = self.set_url(year, date_str)
@@ -312,14 +312,10 @@ class CHIRPS_download:
                 with rasterio.open(urlpath) as src:
                    meta = src.profile
                    masked, mask_transform = mask(dataset=src, shapes=gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crop=True)
-                   stackimages.append(masked)
-
-                xrm = numpy_to_xarray(stackimages, mask_transform, crs=str(meta['crs']), var_name='precipitation')
-                # xda = rio.open_rasterio(urlpath)
-                # clipped_xda = xda.rio.clip(gpd.GeoSeries([from_xyxy_2polygon(*extent)]), crs=str(xda.rio.crs), drop=True)
-                # clipped_xda.name = "precipitation"
-                # xrm = clipped_xda.to_dataset()
-                xrm.to_netcdf(fnf_outputpath)
+                   if masked.shape[0]>1:
+                        masked = np.expand_dims(masked[-1], axis = 0)
+                   xrm = numpy_to_xarray(masked, mask_transform, crs=str(meta['crs']), var_name='precipitation')
+                   xrm.to_netcdf(fnf_outputpath)
 
         return os.path.join(output_path,year)
         

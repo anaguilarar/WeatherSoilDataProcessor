@@ -1,38 +1,24 @@
 DATES:
-  starting_date: "1990-01-01"
-  ending_date: "2024-12-31"
+  starting_date: "2021-01-01"
+  ending_date: "2023-12-31"
 
 WEATHER:
   variables:
-    solar_radiation: 
-      mission: agera5
-      source: agera5
+    precipitation: 
+      mission: chirps
+      source: chirps
 
-    temperature_tmax:
-      mission: agera5
-      source: agera5
-
-    temperature_tmin:
-      mission: agera5
-      source: agera5
-
-    vapour_pressure:
-      mission: agera5
-      source: agera5
-
-    wind_speed:
-      mission: agera5
-      source: agera5
 
 SPATIAL_INFO:
-  spatial_file: 'data/country.shp'
-  extent: [-90, 12, -83, 17]
+  spatial_file: null
+  extent: [-61.9, 15.7, -61, 16.6]
 
 GENERAL:
-  suffix: 'hnd'
-  export_as_netcdf: True
+  suffix: 'guadalupe'
   ncores: 10
-  version: '2_0'
+  task: download # datacube
+  reference_variable: 'precipitation'
+  export_as_netcdf: False
 
 PATHS:
   output_path: "weather/"
