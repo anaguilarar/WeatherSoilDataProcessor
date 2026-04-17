@@ -142,14 +142,51 @@ class DataCubeBase():
 
 
 
-def create_dimension(xrdata_dict, newdim_name = 'date', isdate = True):
+# def create_dimension(xrdata_dict, newdim_name = 'date', isdate = True):
+#     datacube_mrs = []
+#     for k,v in tqdm(xrdata_dict.items()):
+#         xrtemp = v.expand_dims(dim = [newdim_name])
+#         xrtemp[newdim_name] = [k]
+#         datacube_mrs.append(xrtemp)
+        
+#     datacube_mrs = xarray.concat(datacube_mrs, dim = newdim_name)
+#     if datacube_mrs.rio.crs is None:
+#         datacube_mrs.rio.write_crs(v.rio.crs, inplace = True)
+#         print(' crs ----------------------> ',datacube_mrs.rio.crs)
+#     if isdate:
+#         datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
+#     return datacube_mrs
+
+def create_dimension(xrdata_dict, newdim_name='date', isdate=True):
     datacube_mrs = []
-    for k,v in tqdm(xrdata_dict.items()):
-        xrtemp = v.expand_dims(dim = [newdim_name])
+    
+    # 1. Capture the CRS before it gets destroyed by concat
+    # We take it from the first dataset in the dictionary
+    reference_crs = list(xrdata_dict.values())[0].rio.crs
+
+    for k, v in tqdm(xrdata_dict.items()):
+        xrtemp = v.expand_dims(dim=[newdim_name])
         xrtemp[newdim_name] = [k]
         datacube_mrs.append(xrtemp)
         
-    datacube_mrs = xarray.concat(datacube_mrs, dim = newdim_name)
+    # 2. Concatenate
+    datacube_mrs = xarray.concat(datacube_mrs, dim=newdim_name)
+    
+    # 3. Restore the CRS robustly
+    if reference_crs is not None:
+        # write_crs on the Dataset creates the spatial_ref coordinate
+        datacube_mrs.rio.write_crs(reference_crs, inplace=True)
+        
+        # VERY IMPORTANT: Force the 'grid_mapping' attribute on all spatial variables
+        # so NetCDF recognizes it properly upon reloading.
+        for var in datacube_mrs.data_vars:
+            # We don't apply this to the spatial_ref variable itself
+            if var != 'spatial_ref':
+                datacube_mrs[var].attrs['grid_mapping'] = 'spatial_ref'
+                
+        print(' CRS successfully restored ----------------------> ', datacube_mrs.rio.crs)
+        
     if isdate:
         datacube_mrs[newdim_name] = [datetime.strptime(i, "%Y%m%d") for i in list(xrdata_dict.keys())]
+        
     return datacube_mrs

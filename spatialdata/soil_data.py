@@ -152,6 +152,7 @@ class SoilGridDataDonwload():
             os.makedirs(output_folder)
 
     def download_soilgrid(self, boundaries):
+        "[-61.9, 15.7, -61, 16.6]"
         x1, y1, x2, y2 = boundaries
         
         for var in self._soil_layers:
@@ -178,12 +179,21 @@ class SoilGridDataDonwload():
 
     @staticmethod
     def _get_from_soilgrid_package(var, depth, extent, output_folder):
-            
+            from pyproj import Transformer
             soil_grids = SoilGrids()
             x1, y1, x2, y2 = extent
+            if x1 < 180.0 and x1>-180.0:
+                proj_homolosine = "+proj=igh +lat_0=0 +lon_0=0 +datum=WGS84 +units=m +no_defs"
+                transformer = Transformer.from_crs("EPSG:4326", proj_homolosine, always_xy=True)
+                # Transformar las coordenadas
+                x1, y1 = transformer.transform(float(x1), float(y1))
+                x2, y2 = transformer.transform(float(x2), float(y2))
+
             output_file = "{}_{}cm_mean_30s.tif".format(var, depth)
+
             data = soil_grids.get_coverage_data(service_id=var, coverage_id='{}_{}cm_mean'.format(var, depth), 
-                                    west=int(x1), south=int(y1), east=int(x2), north=int(y2),
+                                    #west=int(x1), south=int(y1), east=int(x2), north=int(y2),
+                                    west=x1, south=y1, east=x2, north=y2,
                                     crs='urn:ogc:def:crs:EPSG::152160' ,
                                     output=os.path.join(output_folder, output_file))
             

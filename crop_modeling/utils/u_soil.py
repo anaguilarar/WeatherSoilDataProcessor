@@ -175,7 +175,8 @@ def get_soil_datacube(config):
 
     folder_manager = SoilFolderManager(config.SOIL.setup_parameters.path, config.SOIL.setup_parameters.variables)
     soilcube = SoilDataCube(folder_manager, extent=extent)
-    return soilcube.multi_depth_data(verbose=False, reference_variable=config.SOIL.setup_parameters.reference_variable)
+    target_crs = config.SOIL.setup_parameters.get('target_crs',None)
+    return soilcube.multi_depth_data(verbose=False, reference_variable=config.SOIL.setup_parameters.reference_variable, target_crs = target_crs)
 
 
 

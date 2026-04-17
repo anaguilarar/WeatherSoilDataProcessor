@@ -230,12 +230,15 @@ def set_encoding(xrdata, compress_method="zlib"):
 
 
 def check_crs_inxrdataset(xrdataset):
+    if xrdataset.rio.crs is not None:
+        xrdataset.attrs["crs"] = xrdataset.rio.crs
+
     if "crs" in xrdataset.attrs.keys():
         crs = xrdataset.attrs["crs"]
         if isinstance(crs, rasterio.crs.CRS):
             xrdataset.attrs["crs"] = crs.to_string()
-    return xrdataset
 
+    return xrdataset
 
 def get_crs_fromxarray(xrdata):
     crs = None
