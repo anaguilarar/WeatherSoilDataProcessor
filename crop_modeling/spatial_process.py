@@ -498,7 +498,7 @@ class SpatialCM():
             if verbose: logging.info("Loading data from pre-existing files")
             soilm = SpatialData()._open_dataset(self._soil_tmppath)
             weatherm = SpatialData()._open_dataset(self._weather_tmppath)
-            demm = SpatialData()._open_dataset(self._dem_tmppath) if os.path.exists(self._dem_tmppath) else None
+            demm = SpatialData()._open_dataset(self._dem_tmppath) if os.path.exists(self._dem_tmppath) and os.path.exists(self._dem_tmppath) else None
         else:
             if verbose: logging.info("Extracting spatial data from source")
             roi = roi.to_crs(self.climate.rio.crs)

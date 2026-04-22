@@ -166,7 +166,7 @@ def summarize_datacube_as_df(
     
     if pixel_scale:
         ddf = xrdata.to_dataframe().reset_index().dropna()
-        if project_to is not None:
+        if project_to is not None and src_crs != project_to:
             ddf = project_dataframe(ddf, src_crs, target_crs=project_to)
         return ddf
         
@@ -261,7 +261,9 @@ def get_crs_fromxarray(xrdata):
 
 
 def project_dataframe(df, source_crs, target_crs):
-    df = gpd.GeoDataFrame(df, geometry=gpd.points_from_xy(df.x, df.y))
+    orig_cols = df.columns
+    df = gpd.GeoDataFrame(df.values, geometry=gpd.points_from_xy(df.x, df.y))
+    df.columns = list(orig_cols) + ['geometry']
     df = df.set_crs(source_crs, allow_override=True)
     df = df.to_crs(target_crs)
     # Calculate the mean coordinates after reprojection
