@@ -1,5 +1,7 @@
 __pycache__/
-crop_modeling/banana_n/
+config/
+crop_modeling/banana_n/base_.py
+crop_modeling/banana_n/data_test/
 model_configurations/
 cm_code.py
 weather/
