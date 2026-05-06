@@ -9,6 +9,35 @@ from typing import Optional
 from tqdm import tqdm
 
 
+def create_date_raster(idx, ref_raster, model_data, ycol_name = 'HWAH'):
+    import rioxarray as rio
+    tmparray = np.full_like(ref_raster.values, np.nan).flatten()
+    
+    for k,v in model_data.items():
+        tmparray[int(k)] = v[ycol_name].values[idx]
+
+    return tmparray.reshape(ref_raster.values.shape)
+
+def select_highest_values(model_outputs, date_column, ycol_name):
+    
+    collector_dict = {}
+    for k, v in model_outputs.items():
+        try: 
+            df = v.output_data()
+        except:
+            continue
+        
+        idx = df.groupby(date_column)[ycol_name].idxmax().reset_index()
+        collect_bestvalues = []
+        for i in range(idx.shape[0]):
+            posidex = idx.iloc[i].values
+            collect_bestvalues.append(df.loc[df[date_column] == posidex[0]].iloc[posidex[1]])
+
+        collector_dict[k.replace('_','')] = pd.DataFrame(collect_bestvalues).reset_index().drop(columns = 'index').sort_values(date_column)[[ycol_name,date_column]]
+
+    return collector_dict
+    
+
 def model_selection(model: str, working_path: str):
     """
     Factory function to create a SpatialCM class dynamically inheriting from

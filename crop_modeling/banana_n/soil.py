@@ -28,7 +28,7 @@
 # └────────────────────┴──────────────────────────────────────────────┴──────────────────────────────────────────────────────────────────────────────┴────────────────────────────────────────────────────────────┘
 
 
-
+import os
 import numpy as np
 from typing import Tuple, Optional, Dict, List, Any, Union 
 import pandas as pd
@@ -249,7 +249,10 @@ class BanSoil(NitrogenMineralization):
             The underlying soil property data.
         """
         if self._soil is None and self.path is not None:
-            self._soil = pd.read_csv(self.path)
+            if os.path.exists(self.path):
+                self._soil = pd.read_csv(self.path)
+            else:
+                raise None
         
         return self._soil
 
@@ -407,8 +410,14 @@ class BanSoil(NitrogenMineralization):
         float
             The initial soil mineral nitrogen (kg/ha).
         """
-        starting_deg = datetime.strptime(starting_date, '%Y-%m-%d') - timedelta(days=previous_daysstock)
-        starting_deg_str = datetime.strftime(starting_deg, '%Y-%m-%d')
+        
+        if isinstance(starting_date, str):
+            starting_deg = datetime.strptime(starting_date, '%Y-%m-%d') - timedelta(days=previous_daysstock)
+            starting_deg_str = datetime.strftime(starting_deg, '%Y-%m-%d')
+        else:
+            starting_deg = starting_date - timedelta(days=previous_daysstock)
+            starting_deg_str = starting_deg.strftime('%Y-%m-%d')
+            starting_date = starting_date.strftime('%Y-%m-%d')
 
         tmean_90days = weather_manager.get_mean_temperature(starting_deg_str, starting_date)
         rain_90days = weather_manager.get_precipitation(starting_deg_str, starting_date)
@@ -487,33 +496,33 @@ class BANANASoilMat:
         """
         Initialize the state variables and physical constants of the soil layers.
         """
-        self.dNBAN = 0.0 # N demand of banana plants in mat ‘m’ at time 
-        self.pnBAN = 0.0 # Percentage of nitrogen in banana dry biomass in mat
+        self.dNBAN: float = 0.0 # N demand of banana plants in mat ‘m’ at time 
+        self.pnBAN: float = 0.0 # Percentage of nitrogen in banana dry biomass in mat
         
-        self.dNBAN_1 = 0.0 # Nitrogen demand by soil layer 1
-        self.dNBAN_2 = 0.0 # Nitrogen demand by soil layer 2
+        self.dNBAN_1: float = 0.0 # Nitrogen demand by soil layer 1
+        self.dNBAN_2: float = 0.0 # Nitrogen demand by soil layer 2
         
-        self.WAL1 = 0.0 # Water available for leaching from the upper soil layer in mat ‘m’ at time step ‘t’
-        self.WAL = 0.0 # Water available for leaching from the lower soil layer in mat 
+        self.WAL1: float = 0.0 # Water available for leaching from the upper soil layer in mat ‘m’ at time step ‘t’
+        self.WAL: float = 0.0 # Water available for leaching from the lower soil layer in mat 
         
-        self.ET1 = 0.0 # soil 1
-        self.ET2 = 0.0 # soil 2
+        self.ET1: float = 0.0 # soil 1
+        self.ET2: float = 0.0 # soil 2
         
         # nitrogen balance
-        self.NAL1 = 0.0
-        self.NAL2 = 0.0
-        self.NAL = 0.0 
-        self.MOS = 0.0 # Mineral N from mineralization of soil organic matter in mat ‘m’ at time step ‘t’
+        self.NAL1: float = 0.0
+        self.NAL2: float = 0.0
+        self.NAL: float = 0.0 
+        self.MOS: float = 0.0 # Mineral N from mineralization of soil organic matter in mat ‘m’ at time step ‘t’
         
         # water storage
-        self.SW1 = 200.0 
-        self.SW2 = 220.0
+        self.SW1: float = 200.0 
+        self.SW2: float = 220.0
         
         
-        self.kl1 = 0.7 # leaching coefficient upper layer
-        self.kl2 = 0.6 # leaching coefficient lower layer
+        self.kl1: float = 0.7 # leaching coefficient upper layer
+        self.kl2: float = 0.6 # leaching coefficient lower layer
         
         ##
-        self.UBAN1 = 0.0 #N uptake of banana plants in the upper soil layer in mat ‘m’ at time step ‘t’
-        self.UBAN2 = 0.0 #N uptake of banana plants in the upper soil layer in mat ‘m’ at time step ‘t’
+        self.UBAN1: float = 0.0 #N uptake of banana plants in the upper soil layer in mat ‘m’ at time step ‘t’
+        self.UBAN2: float = 0.0 #N uptake of banana plants in the upper soil layer in mat ‘m’ at time step ‘t’
 

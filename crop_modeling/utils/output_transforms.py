@@ -46,6 +46,14 @@ class ColumnNames():
                     'tmin': 'tmin',
                     'srad': 'srad',
                     'rain': 'rain'},
+
+            'banana_n': {'date':'DATE',
+                    'tmax':'tmax',
+                    'tmin': 'tmin',
+                    'srad': 'srad',
+                    'rain': 'rain',
+                    'dtt': 'dtt',
+                    'etr': 'etr'},
             
             'caf': {'date': 'DATE',
                     'tmax':'TMAX',
@@ -57,21 +65,26 @@ class ColumnNames():
     _growth_column = {
             'dssat': {'date':'PDAT',
                     'mdate':'MDAT',
-                'hdate':'HDAT',
-                'yield':'HWAH',
-                'number_of_cycle': 'TRNO'},
+                    'hdate':'HDAT',
+                    'yield':'HWAH',
+                    'number_of_cycle': 'TRNO'},
             
+            'banana_n': {'date':'sowing_date',
+                    'hdate':'harvesting_date',
+                    'yield':'fruit_yield',
+                    'total_biomass':'TOTBAN',
+                    'number_of_cycle': 'TRNO'},
+
             'simple_model': {'date':'sowing_date',
-                'hdate':'harvesting_date',
-                'yield':'crop_yield',
-                'number_of_cycle': 'TRNO'},
+                    'hdate':'harvesting_date',
+                    'yield':'crop_yield',
+                    'number_of_cycle': 'TRNO'},
             
             'caf': {'date': 'HDAT',
-                'yield':'harvDM_f_hay',
-                'flowering_date': 'DayFl',
-                'number_of_cycle': 'n_cycle',
-                'hdate': 'DayHarv(1)'
-            }
+                    'yield':'harvDM_f_hay',
+                    'flowering_date': 'DayFl',
+                    'number_of_cycle': 'n_cycle',
+                    'hdate': 'DayHarv(1)'}
         }
     
     _nitrogen_uptake = {

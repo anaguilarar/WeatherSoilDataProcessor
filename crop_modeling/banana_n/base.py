@@ -8,6 +8,7 @@ import pandas as pd
 import math
 import copy
 import xarray
+from tqdm import tqdm
 from typing import Dict, List, Tuple, Any, Optional
 from .soil import BANANASoilMat
 from .management import BANANAFerti, nitrogen_release
@@ -15,14 +16,22 @@ from ..utils.model_base import ModelBase
 from .files_export import BANANAWeatherTable, BANANADEMTable, BANANASoilTable
 from .weather import BanWeather
 from .soil import BanSoil
+from .output import BananaNOutputData, BananaNReporter
 
+
+def banana_fertilizer_schedule(fertilizerdata, nbweeks: int) -> List[Dict]:
+    # TODO: implement fertilization schedule for banana
+
+    return [{'application': False, 'q_org': 0.0, 'min_f': 0.0} for _ in range(nbweeks)]
 
 def banana_cycle_weekly_weather(bananasp_env, total_weeks: int):
 
     weather_manager = bananasp_env['weathert']
     starting_date = bananasp_env['planting_date']
     # weather
-    ending_date = datetime.strptime(starting_date, '%Y-%m-%d') + timedelta(days=(total_weeks+1)*7)
+    if isinstance(starting_date, str):
+        starting_date = datetime.strptime(starting_date, '%Y-%m-%d')
+    ending_date = starting_date + timedelta(days=(total_weeks+1)*7)
     ending_date = datetime.strftime(ending_date, '%Y-%m-%d')
 
     weather_df = weather_manager.weekly_weather(starting_date = starting_date, ending_date = ending_date)
@@ -32,6 +41,7 @@ def banana_cycle_weekly_weather(bananasp_env, total_weeks: int):
 
 def soil_initial_conditions(bananasp_env):
     soil_manager = bananasp_env['soil']
+
     weather_manager = bananasp_env['weathert']
     pldate = bananasp_env['planting_date']
 
@@ -169,10 +179,10 @@ class PlantParameters:
         Mineralization rate of soil organic nitrogen.
     """
     Ea: float = 0.95  # Maximun light interception efficiency of banana canopy
-    Ec: float = 0.45 # Proportion of PAR intercepted
+    Ec: float = 0.48 # Proportion of PAR intercepted
     kBAN: float = 0.7 # Extinction coefficient of banana canopy # Turner (1990)
-    Pintmax: float = 0.5 # Maximum proportion of light intercepted by the canopy at flowering (Turner, 1990)
-    sdd_iff: float = 880 # Thermal time interval between floral induction and flowering -> Measured with data from Rapetti. (2022) °C/day 
+    Pintmax: float = 0.7 # Maximum proportion of light intercepted by the canopy at flowering (Turner, 1990)
+    sdd_iff: float = 880.0 # Thermal time interval between floral induction and flowering -> Measured with data from Rapetti. (2022) °C/day 
     sdd_fh: float = 750.0 # Thermal time interval between flowering and harvest -> Dorel et al. (2016)
     sdd_pif: float = 1451.0 # Thermal time interval between planting and flowering induction -> Measured with BS data
     
@@ -184,6 +194,9 @@ class PlantParameters:
     
     DMfruitmax: float = 35 # Maximal finger dry biomass # g
 
+    psk: float = 0.2        # Percentage allocation of total biomass to sucker
+    allocroot: float = 0.028 # % of assimilates allocated to roots 
+    
     slban: float = 0.018 # Specific leaf area at flowering m2/g
     laiban1: float = 0.1 # Initial leaf area index of banana m2 leaf area per m2 ground area
     laiban_max: int = 7 # Leaf area index of banana for maximal photosynthetically active radiation intercepted m2 leaf area per m2 ground area. Measured with data from Ruillé et al. (2023)
@@ -198,7 +211,7 @@ class PlantParameters:
     
     cn_r_ban: float = 18.3 #C/N Ratio of banana residues (Experiment B)
     cn_r_hum: float = 1/10 # : C/N humus (wh - > r code)
-    cn_r_mbban: float = 7.8 if cn_r_ban < 14 else 30.1 - (275/cn_r_ban) # C:N ratio of zymogenous microbial biomass  (CNBBAN)
+    cn_r_mbban: float = 7.8 if cn_r_ban < 14.8 else 30.1 - (275/cn_r_ban) # C:N ratio of zymogenous microbial biomass  (CNBBAN)
     
     h_ban: float = 1 - ((0.91 * cn_r_ban) / 16.2 + cn_r_ban) #Humification rate of microbial biomass
     
@@ -284,50 +297,33 @@ class BananaCycle(PlantParameters):
         self.dNRESBAN = 0 # Mineral N from banana residue mineralization
         
     def update_phenology(self, temperature: float) -> None: 
-        """
-        Update the phenological state of the plant based on the accumulated thermal time and stress factors.
-        
-        Parameters
-        ----------
-        temperature : float
-            Daily temperature for thermal time accumulation.
-
-        Notes
-        -----
-        Equation 1. Banana N. Ruillé et al. (2025)
-        """
         stress_factor_value = self.stress if self.sominiflo < 1 else 1.0
-        stress_factor_value = max(0.1, stress_factor_value) # Ensure that the stress factor does not drop below 0.1
-        if self.sdd < 0: stress_factor_value = 1.0 # No stress before planting
-        self.sdd += max(0, temperature) * stress_factor_value # Accumulate thermal time with stress factor
-        self.sominiflo = 1 if self.sdd >= self.sdd_pss else 0 # Floral induction occurs when accumulated thermal time exceeds the threshold
-        self.sdd_post_iniflo = self.sdd_post_iniflo + temperature if self.sominiflo == 1 else 0 # Accumulate thermal time since floral induction    
-        self.somfloraison = self.somfloraison + 1 if self.sdd_post_iniflo >= self.sdd_iff else 0 # floral induction and flowering
-        self.sdd_post_floraison = self.sdd_post_floraison + temperature if self.somfloraison == 1 else 0 # Accumulate thermal time post flowering
+        stress_factor_value = max(0.1, stress_factor_value) 
+        if self.sdd < 0: stress_factor_value = 1.0 
         
-        self.recolte = 1 if self.sdd_post_floraison >= self.sdd_fh else 0 # Harvest occurs when accumulated thermal time post flowering exceeds the threshold
+        self.sdd += max(0, temperature) * stress_factor_value 
+        
+        self.reject = 1 if self.sdd >= self.sdd_pss else 0
+        
+        self.sominiflo = self.sominiflo + 1 if self.sdd >= self.sdd_pif else 0 
+        self.sdd_post_iniflo = self.sdd_post_iniflo + temperature if self.sominiflo >= 1 else 0 
+        self.somfloraison = self.somfloraison + 1 if self.sdd_post_iniflo >= self.sdd_iff else 0 
+        self.sdd_post_floraison = self.sdd_post_floraison + temperature if self.somfloraison >= 1 else 0 
+        
+        self.recolte = 1 if self.sdd_post_floraison >= self.sdd_fh else 0 
         self.som_recolte = self.som_recolte + 1 if self.recolte == 1 else 0
     
+            
     def update_biomass_and_allocation(self, temperature: float, surface_area: float) -> None:
-        """
-        Update the biomass accumulation and allocation to different plant parts.
-
-        Parameters
-        ----------
-        temperature : float
-            Daily temperature.
-        surface_area : float
-            Surface area available for the plant (m2).
-        """
         if self.recolte == 1:
             self.ban_biomass = 0.0
             self.veg_biomass = 0.0
             self.bun_biomass = 0.0
             self.laiban = 0.0
-        
             
-        self.ndd = self.andd if self.sominiflo == 1 else self.andd * self.ban_biomass + self.bndd  # aNDD×Biomass at floral induction+bNDD A1.1. Ruillé et al. (2025)
-        self.dmfruit = self.bun_biomass/self.ndd if (self.somfloraison >= 1 and self.recolte < 1) and self.ndd > 0 else 0.0
+        # FIX: NDD is fixed at floral induction
+        self.ndd = self.andd * self.ban_biomass + self.bndd if self.sominiflo == 1 else self.ndd
+        self.dmfruit = self.bun_biomass/self.ndd if (self.somfloraison >= 1 and self.recolte < 1 and self.ndd > 0) else 0.0
         
         if self.sominiflo < 1 or self.recolte >= 1: 
             alloc_bun = 0.0
@@ -336,27 +332,26 @@ class BananaCycle(PlantParameters):
         else:
             alloc_bun = self.RGR  * temperature * (1 - (self.dmfruit / self.DMfruitmax)) * self.ndd
         
-        alloc_bun = min(alloc_bun, self.dDMBAN) # The biomass allocated to the bunch cannot exceed the total newly formed biomass
+        alloc_bun = min(alloc_bun, self.dDMBAN) 
         
         if self.sominiflo < 1:
-            alloc_veg = self.dDMBAN + self.received_biomass # Before floral induction, all biomass goes to vegetative growth
+            alloc_veg = self.dDMBAN + self.received_biomass 
         else:
             alloc_veg = self.dDMBAN - alloc_bun + self.received_biomass    
         
         self.received_biomass = 0.0
         
-        ## accumulate biomass
-        self.ban_biomass += self.dDMBAN  ## equation 9 Ruillé et al. (2025)
+        self.ban_biomass += self.dDMBAN  
+        self.veg_biomass += alloc_veg + self.alloc_suc 
+        self.bun_biomass += alloc_bun 
         
-        self.veg_biomass += alloc_veg + self.alloc_suc # equation 10 Ruillé et al. (2025), there is modification included alloc_suc which is the biomass received from the parent plant (sucker)
-        self.bun_biomass += alloc_bun # equation 11 Ruillé et al. (2025)
-        senBan = 0.25 if self.somfloraison >= 1 else 0.013
+        # FIX: Correct senescence rate to 0.025
+        senBan = 0.025 if self.somfloraison >= 1 else 0.013
         plv = 0.51 if self.sominiflo < 1 else 0.3
-        
-        ## BANANA Leaf area index                
+                      
         if self.somfloraison < 1:
-            prod1 = alloc_veg * plv * self.slban * ((self.laiban_max - self.laiban) / self.laiban_max) / surface_area # equation 5 Ruillé et al. (2025)
-            self.laiban = self.laiban + prod1  - self.laiban * senBan 
+            prod1 = alloc_veg * plv * self.slban * ((self.laiban_max - self.laiban) / self.laiban_max) / surface_area 
+            self.laiban = self.laiban + prod1  - (self.laiban * senBan)
         else:
             self.laiban = self.laiban - (self.laiban * senBan)
             
@@ -427,6 +422,7 @@ class BananaMat_cycles(PlantParameters):
         self.ferti = BANANAFerti()
         
         self.pool_sdd = pool_sdd
+        self.penal = int(np.random.choice(generate_lognorm_pool(1.0, 0.43)))
         
         
     def update_mat(self, week: int, temperature: float, radiation: float, rain: float, et: float, is_fertilizer_applied: bool, of_amount: float, minf_amount: float) -> None:
@@ -452,6 +448,12 @@ class BananaMat_cycles(PlantParameters):
         minf_amount : float
             Amount of mineral fertilizer applied.
         """
+        r_t = week + 1
+        
+        if r_t < self.penal:
+            for cycle in self.cycles:
+                cycle.stress = 0.0
+                
         mat_lai = sum(c.laiban for c in self.cycles if c.recolte == 0) # Calculate the total leaf area index of the mat by summing the leaf area index of all cycles that have not been harvested
         
         pari_ban = self.Ea * self.Ec * radiation * (1 - np.exp(-self.kBAN * mat_lai)) # PAR intercepted by the canopy
@@ -515,12 +517,12 @@ class BananaMat_cycles(PlantParameters):
         etr = et * kc
         et1 = etr * self.ZrBAN1
         et2 = etr * self.ZrBAN2
-        
+                
         wal1 = max(0, rain - et1 - (self.soil.SW1 - self.soil.wsol1))
         wal = max(0, wal1 - et2 - (self.soil.SW2 - self.soil.wsol2))
         
         self.soil.wsol1 = max(0, self.soil.wsol1 + rain - et1 - wal1)
-        self.soil.wsol2 = max(0, self.soil.wsol1 + wal1 + et2 - wal)
+        self.soil.wsol2 = max(0, self.soil.wsol2 + wal1 - et2 - wal)
         
         # leaching
         nl1 = self.soil.SMN1 * (1 -np.exp(-self.soil.kl1 * wal1 / self.soil.SW1))
@@ -616,8 +618,8 @@ class BANANAField:
             total_fruit_g: float = 0.0
 
             for mat in self.mats:
-                delay_f = int(np.random.choice(self.flowering_delay_weeks))
-                if week<int(delay_f): mat.stress = 0
+                #delay_f = int(np.random.choice(self.flowering_delay_weeks))
+                #if week<int(delay_f): mat.stress = 0
                 mat.update_mat(
                         week = week, temperature = w['dtt'],
                         radiation = w['srad'], rain = w['rain'],
@@ -791,7 +793,136 @@ class PyBananaN(ModelBase):
             soilprocessor = BANANASoilTable(xrdata, xrdata_path)
             soilprocessor(depth_var_name = 'depth', group_by= group_by, group_by_layer = group_by_layer, outputpath = outputpath, codes=group_codes, target_crs=target_crs, pixel_scale = pixel_scale)
 
-    def run_scenarios(self, arid, weather, crop, starting_date: str, total_planting_windows = None, cycle_days = 750, co2 = 381, n_years = None, n_cores = 0, output_path = None):  ## Co2 values from simple model authors implementation conditions from south brazil
 
-        output_path = output_path or ""
-        self.set_up_management(sowing_date=starting_date, total_planting_windows=total_planting_windows)
+    def simulate_scenario(self, env_name: str, nban: int = 40, density: float = 1300.0): 
+        """
+        Simulate a single scenario for a given environment.
+
+        Parameters
+        ----------
+        env_name : str
+            Environment name.
+        nban : int, optional
+            Number of banana plants, by default 40.
+        density : float, optional
+            Planting density, by default 1300.0.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with simulation results.
+        """
+        
+        nbweeks = self._enviroments[env_name]['cycle_duration_weeks']
+        init_soil_parameters = soil_initial_conditions(self._enviroments[env_name])
+
+        weather_weekly_data = banana_cycle_weekly_weather(self._enviroments[env_name], total_weeks=nbweeks)
+
+        ferti_schedule = banana_fertilizer_schedule(self._enviroments[env_name].get('fertilizerdata', None), nbweeks=nbweeks)
+
+        model = BANANAField(nban=nban, density=density, init_soil_parameters=init_soil_parameters)
+        history = model.simulate(nb_weeks = nbweeks, weather_data = weather_weekly_data, ferti_schedule = ferti_schedule)
+
+        return history
+    
+    def _check_paths_existance(self, env_name: str) -> None:
+        """
+        Check if the paths for the given environment exist.
+        """
+        if not os.path.exists(self._enviroments[env_name]['soil'].path):return False
+        if not os.path.exists(self._enviroments[env_name]['weathert'].path):return False
+        return True
+        
+
+    def simulate_planting_dates(self, env_name: str, n_windows:int, **kwargs ):
+        """
+        Simulate multiple planting dates for a given environment.
+
+        Parameters
+        ----------
+        env_name : str
+            Environment name.
+        n_windows : int
+            Number of planting dates to simulate.
+        **kwargs :
+            Additional arguments to pass to `simulate_scenario`.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with simulation results.
+        """
+        planting_date = self._enviroments[env_name]['planting_date']
+        dates = pd.date_range(start=planting_date, periods=n_windows, freq = '7D')
+        
+        weather_instance = self._enviroments[env_name]['weathert']
+
+        if not self._check_paths_existance(env_name): return False
+
+        lastdate = weather_instance.weather.values[-1,0]
+        reporter = BananaNReporter()
+
+        for i, plt_date in enumerate(dates[:-1]):
+            nbweeks = self._enviroments[env_name]['cycle_duration_weeks']
+            
+            if plt_date + timedelta(weeks=nbweeks)>= lastdate: break
+            
+            sim_results = pd.DataFrame(self.simulate_scenario(env_name, **kwargs))
+            if sim_results is None: continue
+            sim_results['TRNO'] = i
+            sim_results['TOTBAN'] = (sim_results['Avg_Bioamass_g_mat'] / 1000) * kwargs['density']
+            sim_results['fruit_yield'] = (sim_results['Avg_Fruit_g_mat'] / 1000) * kwargs['density']
+            sim_results['sowing_date'] = plt_date.strftime("%Y-%m-%d")
+            # harvest is when the best yield is achieved (not fixed for each planting date)
+            best_yield_week = sim_results['TOTBAN'].argmax()
+            
+            harvesting_date = (plt_date + timedelta(days=best_yield_week.tolist()*7)).strftime("%Y-%m-%d")
+            nrows = sim_results['TOTBAN'].values.shape[0]
+            for j in range(nrows):
+                reporter.update_report(
+                            {'crop': 'banana',
+                        'TRNO': i,               
+                        'longitude': weather_instance.station.longitude,
+                        'latitude': weather_instance.station.latitude,
+                        'altitude': weather_instance.station.altitude,
+                        'sowing_date': plt_date.strftime("%Y-%m-%d"),
+                        'harvesting_date': harvesting_date,
+                        'week': sim_results.Week.values[j],
+                        'biomass': sim_results['TOTBAN'].values[j],
+                        'fruit_yield': sim_results['fruit_yield'].values[j],
+                        'Avg_Bioamass_g_mat': sim_results['Avg_Bioamass_g_mat'].values[j],
+                        'Avg_Fruit_g_mat':sim_results['Avg_Fruit_g_mat'].values[j]}
+                )
+            
+            reporter.save_reporter(path= env_name, fn = f'output_{i}.csv')
+            reporter.clear_report()
+        
+        return True
+    
+
+
+    def run(self, nBan = 40, plantingDensity = 1300.0, n_plating_windows:int = None, n_cores: int = 1) -> None:
+        """
+        Execute the Banana_N
+        """
+        if n_plating_windows is None: n_plating_windows = 1
+        completed = {}
+        n_plating_windows = n_plating_windows if n_plating_windows else None
+
+        # if n_cores > 0:
+        #     with tqdm(total=total_planting_windows) as pbar:
+        #         with concurrent.futures.ProcessPoolExecutor(max_workers=n_cores) as executor:
+        #             future_to_tr ={executor.submit(simulate_planting_dates, env_name, copy.deepcopy(crop), copy.deepcopy(arid), trn, self.planting_dates, n_years, co2, cycle_days, output_path): (trn) for trn in range(total_planting_windows)}
+        
+        for env_name in tqdm(self._process_paths):
+            if not self.simulate_planting_dates(env_name, n_windows=self._enviroments[env_name]['cycle_duration_weeks'], nban = nBan, density = plantingDensity): 
+                continue
+            self._enviroments[env_name]['reporter'] = BananaNOutputData(env_name)
+            self._enviroments[env_name]['reporter'].output_data().to_csv(os.path.join(env_name, 'output.csv'), index = False)
+            completed[env_name] = True
+
+
+        return completed    
+
+
+            

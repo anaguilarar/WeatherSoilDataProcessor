@@ -13,7 +13,10 @@ from typing import Dict, Optional, Union, Tuple
 import xarray
 import rioxarray as rio
 
-from .utils.process import get_crs_fromxarray,set_encoding, check_crs_inxrdataset, summarize_datacube_as_df, model_selection
+from .utils.process import (get_crs_fromxarray,set_encoding, check_crs_inxrdataset, 
+                            summarize_datacube_as_df, model_selection,
+                            create_date_raster, select_highest_values)
+                            
 from .utils.u_soil import get_layer_texture, get_soil_datacube
 from .utils.u_weather import get_weather_datacube, WeatherTransformer
 
@@ -69,39 +72,63 @@ def create_yield_raster_single_time_window(ref_raster, model_data, ycol_name ='H
 
     return rasterdata
 
-def create_date_raster(idx, ref_raster, model_data, ycol_name = 'HWAH'):
-    import rioxarray as rio
-    tmparray = np.full_like(ref_raster.values, np.nan).flatten()
-    
-    for k,v in model_data.items():
-        tmparray[int(k)] = v[ycol_name].values[idx]
 
-    return tmparray.reshape(ref_raster.values.shape)
+def create_mlt_yield_raster(ref_raster, model_data, date_column = 'PDAT', ycol_name = 'HWAH', select_highest_value = False):
+    """
+    Create a mulstitemporal xarray for yield data results
 
-def create_mlt_yield_raster(ref_raster, model_data, ycol_name = 'HWAH' ):
+    Parameters
+    ----------
+    ref_raster : xarray.Dataset
+        Reference raster for the spatial extent and resolution.
+    model_data : dict
+        Dictionary where keys are pixel indices (str) and values are CropModelOutputData objects.
+    date_column : str, optional
+        Name of the column in the output data containing the date, by default 'PDAT'.
+    ycol_name : str, optional
+        Name of the column in the output data containing the yield value, by default 'HWAH'.
+    select_highest_value : bool, optional
+        If True, selects the highest yield value for each pixel across all dates. If False, uses the first date's value., by default False.
+
+    Returns
+    -------
+    xarray.DataArray
+        A multi-dimensional xarray DataArray containing the yield values for each date.
+
+    Raises
+    ------
+    ValueError
+        If `ref_raster` has no spatial attributes or the date column is missing.
+    """
     #assert os.path.exists(ref_raster_path)
     
-    _, v = next(iter(model_data.items()))
-    dates = v.output_data().sort_values('PDAT')[['PDAT']]
-    
     ref_raster_c = ref_raster.copy()
-    alldata = {}
-    for i, (k, v) in enumerate(model_data.items()):
-        try:
-            alldata[k] = v.output_data().sort_values('PDAT')[[ycol_name,'PDAT']]
-        except:
-            continue
+    if select_highest_value:
+        alldata = select_highest_values(model_data, date_column = 'sowing_date', ycol_name = 'fruit_yield')
+        dates = alldata[list(alldata.keys())[0]][date_column].values
+
+    else:
+        _, v = next(iter(model_data.items()))
+        dates = v.output_data().sort_values(date_column)[[date_column]][date_column].values
+        
+        alldata = {}
+        for i, (k, v) in enumerate(model_data.items()):
+            try:
+                alldata[k] = v.output_data().sort_values(date_column)[[ycol_name,date_column]]
+            except:
+                continue
         
     rasterlis = []
-    for idate in tqdm(range(dates.PDAT.values.shape[0])):
+    for idate in tqdm(range(dates.shape[0])):
         img_vals = create_date_raster(idate, ref_raster_c, alldata, ycol_name = ycol_name)
-        rasterdata = list_tif_2xarray(np.array(img_vals), transform=ref_raster_c.rio.transform(),crs=ref_raster_c.rio.crs, bands_names=['HWAH'],depth_dim_name='date', dimsformat='CHW')
+        rasterdata = list_tif_2xarray(np.array(img_vals), transform=ref_raster_c.rio.transform(),crs=ref_raster_c.rio.crs, bands_names=[ycol_name],depth_dim_name='date', dimsformat='CHW')
         #img_vals.attrs['long_name'] = ycol_name
         rasterlis.append(rasterdata.expand_dims('date'))
     rasterd = xarray.concat(rasterlis, dim = 'date')
-    rasterd = rasterd.assign_coords(date =  dates.PDAT.values,
+    rasterd = rasterd.assign_coords(date =  dates,
                                     x =  ref_raster_c.x.values, y =  ref_raster_c.y.values)
     #rasterd.date = dates.PDAT.values
+    rasterd = rasterd.rio.write_crs(ref_raster_c.rio.crs)
     rasterd.attrs['transform'] = ref_raster_c.rio.transform()
     
     return rasterd

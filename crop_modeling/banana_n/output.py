@@ -9,6 +9,19 @@ from datetime import datetime
 from ..utils.model_base import BaseOutputData, ReporterBase
 
 
+def update_banana_n_data_using_path(path):
+
+
+    groupclasses = [
+        i for i in os.listdir(path) if os.path.isdir(os.path.join(path, i))
+    ]
+
+    return {
+        groupclasses[i]: BananaNOutputData(os.path.join(path, groupclasses[i]))
+        for i in range(len(groupclasses))
+    }
+
+
 class BananaNOutputData(BaseOutputData):
     
     @property
@@ -62,7 +75,7 @@ class BananaNOutputData(BaseOutputData):
 class BananaNReporter(ReporterBase):
     
     def __init__(self):
-        self._tmp_reporter_keys = ['crop', 'week', 'soil_texture', 'longitude', 'latitude', 'altitude','planting_date', 'smn', 'biomass', 'fruit_biomass']
+        self._tmp_reporter_keys = ['crop', 'TRNO', 'longitude', 'latitude', 'altitude','sowing_date', 'harvesting_date', 'week', 'biomass', 'fruit_yield', 'Avg_Bioamass_g_mat', 'Avg_Fruit_g_mat']
         super().__init__()
         self.set_reporter(self._tmp_reporter_keys)
         
