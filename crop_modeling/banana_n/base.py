@@ -11,18 +11,12 @@ import xarray
 from tqdm import tqdm
 from typing import Dict, List, Tuple, Any, Optional
 from .soil import BANANASoilMat
-from .management import BANANAFerti, nitrogen_release
+from .management import BANANAFerti, nitrogen_release, banana_fertilizer_schedule
 from ..utils.model_base import ModelBase
 from .files_export import BANANAWeatherTable, BANANADEMTable, BANANASoilTable
 from .weather import BanWeather
 from .soil import BanSoil
 from .output import BananaNOutputData, BananaNReporter
-
-
-def banana_fertilizer_schedule(fertilizerdata, nbweeks: int) -> List[Dict]:
-    # TODO: implement fertilization schedule for banana
-
-    return [{'application': False, 'q_org': 0.0, 'min_f': 0.0} for _ in range(nbweeks)]
 
 def banana_cycle_weekly_weather(bananasp_env, total_weeks: int):
 
@@ -899,8 +893,6 @@ class PyBananaN(ModelBase):
         
         return True
     
-
-
     def run(self, nBan = 40, plantingDensity = 1300.0, n_plating_windows:int = None, n_cores: int = 1) -> None:
         """
         Execute the Banana_N

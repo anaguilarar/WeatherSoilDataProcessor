@@ -1,7 +1,13 @@
-from typing import Dict, Sequence, Union, Any, Optional
-from typing import Dict
+from typing import Dict, List, Sequence
 
 import numpy as np
+
+
+def banana_fertilizer_schedule(fertilizerdata, nbweeks: int) -> List[Dict]:
+    # TODO: implement fertilization schedule for banana
+
+    return [{'application': False, 'q_org': 0.0, 'min_f': 0.0} for _ in range(nbweeks)]
+
 
 def nitrogen_release(Cr0: float, r: float, Y: float, L: float, t: float, h: float, wr: float, wb: float, wh: float = 0.1) -> Dict[str, float]:
     """
