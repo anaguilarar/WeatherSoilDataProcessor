@@ -307,8 +307,7 @@ class TableDataTransformer(ABC):
             The process is done at pixel level 
         """
         dfdata = summarize_datacube_as_df(
-            xrdata = self.xrdata, xrdata_path= self.xrdata_path, dimension_name=depth_var_name, group_by=group_by,group_by_layer = group_by_layer,  project_to=target_crs, pixel_scale = pixel_scale
-        )
+            xrdata = self.xrdata, xrdata_path= self.xrdata_path, dimension_name=depth_var_name, group_by=group_by,group_by_layer = group_by_layer,  project_to=target_crs, pixel_scale = pixel_scale)
         
         if not group_by:
             dfdata["group"] = "0"

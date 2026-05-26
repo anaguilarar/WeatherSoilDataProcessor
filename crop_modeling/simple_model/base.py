@@ -348,7 +348,9 @@ def set_up_weather_soil_parameters( dem_path, soil_path, weather_path):
     )
     
     weather_data = Weather(path = weather_path, station = station)
-    weather_data.weather.DATE = pd.to_datetime(weather_data.weather.DATE , format="%Y%m%d")
+    dateformat = "%Y-%m-%d" if "-" in weather_data.weather.DATE[0] else "%Y%m%d"
+        
+    weather_data.weather.DATE = pd.to_datetime(weather_data.weather.DATE , format=dateformat)
     arid = ARID(weather_data)
     arid.soil_params(soil_texture.lower())
 

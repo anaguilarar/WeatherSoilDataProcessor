@@ -1032,6 +1032,7 @@ class Weather():
         ValueError
             If an unsupported eto_method is provided.
         """
+        if eto_method is None: eto_method = 'PT'
         self.eto_method = eto_method
         if self.eto_method == 'PM':
             etoi = self.day_weather.eto()
@@ -1089,12 +1090,13 @@ class Weather():
         Internal helper to update the `day_weather` object used for ET 
         calculations.
         """
+        wind_speed = self.wind_speed if 'wind_speed' in self.__dict__ else None
         
         self.day_weather = self.station.day_entry(
             self.julian_day, 
             temp_min = self.tmin,
             temp_max = self.tmax, 
-            wind_speed = self.wind_speed,
+            wind_speed = wind_speed,
             radiation_s =self.srad
         )
     

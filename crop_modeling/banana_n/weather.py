@@ -4,7 +4,7 @@ from typing import Generator, Dict
 import numpy as np
 import pandas as pd
 
-from ..simple_model.weather import Weather, Station
+from ..simple_model.weather import Weather, Station, petpt
 
 class BanWeather(Weather):
     """
@@ -59,10 +59,18 @@ class BanWeather(Weather):
             altitude=altitude,
         )
         super().__init__(path, df, station)
+        if not isinstance(self.weather.DATE[0], str): 
+            date_format = "%Y%m%d"
+        elif "-" in self.weather.DATE[0]:
+            date_format = "%Y-%m-%d" 
+        else:
+            date_format = "%Y%m%d"
+        
         self.weather.DATE = pd.to_datetime(self.weather.DATE , format=date_format)
         self._weather_subset: pd.DataFrame = None
         self.starting_date: datetime
-
+        print('----> columns: ',  self.weather.columns)
+        
     def _filter_weather_by_date(self, starting_date: str, ending_date: str):
         """
         Subset the weather data for a specific date range.
@@ -108,7 +116,43 @@ class BanWeather(Weather):
         dtt = (df_copy['daily_tmean'] - tbase).values
         dtt[dtt<0] = 0
         return dtt
+    
+    def get_eto(self, df, eto_method:str = 'PT', albedo = 0.23):
+        """
+        Calculate the reference evapotranspiration (ETo)
 
+        Parameters
+        ----------
+        eto_method : {'PM', 'PT'}, optional
+            The method used to calculate ETo. 'PM' stands for Penman-Monteith 
+            and 'PT' stands for Priestley-Taylor. Default is 'PM'.
+
+        Returns
+        -------
+        float
+            The calculated ETo value.
+
+        Raises
+        ------
+        ValueError
+            If an unsupported eto_method is provided.
+        """
+        
+        if eto_method is None: eto_method = 'PT'
+        self.eto_method = eto_method
+        columnnames = list(df.columns)
+        et0 = np.zeros(self._weather_subset.shape[0])
+        
+        for i, rowval in enumerate(df.values):
+            srad = rowval[columnnames.index('srad')]
+            tmax = rowval[columnnames.index('tmax')]
+            tmin = rowval[columnnames.index('tmin')]
+            if self.eto_method == 'PT':
+                
+                et0[i] = petpt(albedo, srad, tmax, tmin, -99)
+                
+        return et0
+    
     def get_mean_temperature(self, starting_date, ending_date):
         """
         Get daily mean temperature for a specific period.
@@ -155,14 +199,9 @@ class BanWeather(Weather):
         """
         self._filter_weather_by_date(starting_date, ending_date)
 
-        days = self._weather_subset.index.values
-        et0 = np.zeros(self._weather_subset.shape[0])
         if "etr" not in self.weather.columns:            
-            for i, day in enumerate(days):
-                self.get_day_weather(day)
-                et0[i] = self.get_day_eto(eto_method = eto_method)
+            return self.get_eto(self._weather_subset.copy(), eto_method = eto_method)
 
-            return et0
         else:
             return self._weather_subset.etr.values
         
@@ -170,6 +209,7 @@ class BanWeather(Weather):
     def weekly_weather(self, starting_date, ending_date, add_variable:Dict = None, tbase = 14.7) -> pd.DataFrame:
         
         dtt = self.get_degree_thermal_time(starting_date, ending_date, tbase)
+        
         self._filter_weather_by_date(starting_date, ending_date)
 
         df_copy = self._weather_subset.copy()
@@ -184,6 +224,9 @@ class BanWeather(Weather):
             "dtt": "sum"
         }
         if "etr" in df_copy.columns:
+            summary_parameters["etr"] = "sum"
+        else:
+            df_copy['etr'] = self.get_evapotranspiration(starting_date, ending_date, tbase)
             summary_parameters["etr"] = "sum"
             
         if add_variable: summary_parameters.update(add_variable)

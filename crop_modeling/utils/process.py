@@ -221,6 +221,9 @@ def summarize_datacube_as_df(
         
     ddf = pd.concat(ddf)
 
+    if project_to is not None and src_crs is not None and src_crs != project_to:
+        ddf = project_dataframe(ddf, src_crs, target_crs=project_to)
+
     return ddf
 
 
