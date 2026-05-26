@@ -10,6 +10,7 @@ import concurrent.futures
 from ..caf.output import CAFOutputData
 from ..dssat.output import DSSATOutputData
 from ..simple_model.output import SimpleModelOutputData
+from ..banana_n.output import BananaNOutputData
 
 monthstring = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 ONI_DATA = pd.read_fwf('https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt')
@@ -72,7 +73,7 @@ class ColumnNames():
             'banana_n': {'date':'sowing_date',
                     'hdate':'harvesting_date',
                     'yield':'fruit_yield',
-                    'total_biomass':'TOTBAN',
+                    'total_biomass':'biomass',
                     'number_of_cycle': 'TRNO'},
 
             'simple_model': {'date':'sowing_date',
@@ -119,7 +120,8 @@ def update_data_using_path(path, model = 'dssat'):
 
     model_class = {'dssat': DSSATOutputData,
                 'caf': CAFOutputData,
-                'simple_model': SimpleModelOutputData}
+                'simple_model': SimpleModelOutputData,
+                'banana_n': BananaNOutputData}
     
     assert model in list(model_class.keys()), f"please check model's name it must be {list(model_class.keys())}"
 
