@@ -1,13 +1,201 @@
 from typing import Dict, List, Sequence
 
 import numpy as np
+from typing import Union, Sequence, Dict, Any, List
 
 
-def banana_fertilizer_schedule(fertilizerdata, nbweeks: int) -> List[Dict]:
-    # TODO: implement fertilization schedule for banana
 
-    return [{'application': False, 'q_org': 0.0, 'min_f': 0.0} for _ in range(nbweeks)]
+def banana_fertilizer_schedule(fertilizerdata: List[Dict[str, Any]] = None, nbweeks: int = 40) -> List[Dict]:
+    ferti_organizer = BananaNFertiSchedule(nbweeks)
+    
+    if fertilizerdata:
+        ferti_organizer.add_mineral_ferti_events(fertilizerdata)
 
+    return ferti_organizer.ferti_schedule
+
+
+class BananaNFertiSchedule:
+    """
+    Organizer to create nitrogen fertilization schedules for banana planting cycles.
+
+    Parameters
+    ----------
+    total_cycle : int
+        Total number of weeks in the banana crop cycle.
+
+    Attributes
+    ----------
+    nbweeks : int
+        Total number of weeks in the crop cycle.
+    _fert_template : List[Dict[str, Any]]
+        Internal list of weekly fertilization event dictionaries.
+
+    Examples
+    --------
+    >>> schedule = BananaNFertiSchedule(total_cycle=52)
+    >>> schedule.add_ferti_event(n_week_afterplt=4, n_amount=10.5)
+    >>> schedule.mineral_fertilize_schedule([
+    ...     {"n_week_afterplt": 8, "n_amount": 12.0},
+    ...     {"n_week_afterplt": 16, "n_amount": 15.0},
+    ... ])
+    >>> schedule.ferti_schedule[4]["min_f"]
+    10.5
+    """
+
+    def __init__(self, total_cycle: int) -> None:
+        """
+        Initialize the fertilization schedule organizer.
+
+        Parameters
+        ----------
+        total_cycle : int
+            Total number of weeks in the banana crop cycle.
+
+        Raises
+        ------
+        ValueError
+            If `total_cycle` is not a positive integer.
+        """
+        if not isinstance(total_cycle, int) or total_cycle <= 0:
+            raise ValueError(
+                f"`total_cycle` must be a positive integer, got {total_cycle!r}."
+            )
+        self.nbweeks: int = total_cycle
+        self._fert_template: List[Dict[str, Any]] = []
+        self.restart_template()
+
+    @property
+    def ferti_schedule(self) -> List[Dict[str, Any]]:
+        """
+        Return the current fertilization schedule.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            A list of weekly fertilization event dictionaries, one per week.
+        """
+        return self._fert_template
+
+    @property
+    def ferti_template(self) -> Dict[str, Any]:
+        """
+        Return a blank fertilization event template dictionary.
+
+        This property generates a fresh template on every access and is
+        intended as a structural reference used internally by
+        `restart_template`.
+
+        Returns
+        -------
+        Dict[str, Any]
+            A dictionary with keys:
+            - ``"application"`` : bool — whether a fertilization event occurs.
+            - ``"week"``        : int  — week index (0-based).
+            - ``"q_org"``       : float — organic fertilizer quantity.
+            - ``"min_f"``       : float — mineral (nitrogen) fertilizer amount.
+        """
+        return {
+            "application": [],
+            "week": [],
+            "q_org": [],
+            "min_f": [],
+        }
+
+    def restart_template(self) -> None:
+        """
+        Reset the internal fertilization schedule to a blank state.
+
+        All weekly entries are re-initialized: ``"application"`` is set to
+        ``False`` and all numeric fields are set to ``0.0``. The ``"week"``
+        field is set to the 0-based week index.
+
+        Notes
+        -----
+        This method is called automatically during ``__init__``. Call it
+        manually to clear any previously added fertilization events.
+        """
+        template_keys = self.ferti_template  # single property access
+        self._fert_template = [
+            {
+                **{
+                    k: (False if k == "application" else 0.0)
+                    for k in template_keys
+                },
+                "week": week_idx,
+            }
+            for week_idx in range(self.nbweeks)
+        ]
+
+    def add_ferti_event(self, n_week_afterplt: int, n_amount: float) -> None:
+        """
+        Add a single nitrogen fertilization event to the schedule.
+
+        Parameters
+        ----------
+        n_week_afterplt : int
+            Week index (0-based, relative to planting) at which the
+            fertilization event should occur. Must be within the crop cycle.
+        n_amount : float
+            Amount of nitrogen (N) to apply at this event.
+
+        Raises
+        ------
+        ValueError
+            If `n_week_afterplt` is outside the valid range
+            ``[0, nbweeks - 1]``.
+
+        Examples
+        --------
+        >>> schedule = BananaNFertiSchedule(total_cycle=52)
+        >>> schedule.add_ferti_event(n_week_afterplt=4, n_amount=10.5)
+        >>> schedule.ferti_schedule[4]
+        {'application': True, 'week': 4, 'q_org': 0.0, 'min_f': 10.5}
+        """
+        if not (0 <= n_week_afterplt < self.nbweeks):
+            raise ValueError(
+                f"'n_week_afterplt' must be in [0, {self.nbweeks - 1}], "
+                f"got {n_week_afterplt}."
+            )
+        self._fert_template[n_week_afterplt]["application"] = True
+        self._fert_template[n_week_afterplt]["min_f"] = float(n_amount)
+
+    def add_mineral_ferti_events(
+        self, application_list: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Add multiple nitrogen fertilization events from a list of event dicts.
+
+        Each dictionary in `application_list` is unpacked as keyword
+        arguments into :meth:`add_ferti_event`, so every dict must contain
+        exactly the keys ``"n_week_afterplt"`` and ``"n_amount"``.
+
+        Parameters
+        ----------
+        application_list : List[Dict[str, Any]]
+            A list of fertilization event descriptors. Each element must be a
+            dict with:
+
+            - ``"n_week_afterplt"`` : int — week index relative to planting.
+            - ``"n_amount"``        : float — nitrogen amount for the event.
+
+        Raises
+        ------
+        ValueError
+            If any event's ``"n_week_afterplt"`` value is outside the valid
+            range, propagated from :meth:`add_ferti_event`.
+        KeyError
+            If a dict in `application_list` is missing required keys.
+
+        Examples
+        --------
+        >>> schedule = BananaNFertiSchedule(total_cycle=52)
+        >>> schedule.mineral_fertilize_schedule([
+        ...     {"n_week_afterplt": 4,  "n_amount": 10.5},
+        ...     {"n_week_afterplt": 12, "n_amount": 14.0},
+        ... ])
+        """
+        for event in application_list:
+            self.add_ferti_event(**event)
 
 def nitrogen_release(Cr0: float, r: float, Y: float, L: float, t: float, h: float, wr: float, wb: float, wh: float = 0.1) -> Dict[str, float]:
     """
@@ -211,63 +399,3 @@ class BANANAFerti:
             # If no fertilizer has been applied yet, ensure fluxes are 0
             self.dNhumOF = 0
             self.dNRESOF = 0
-
-
-class BananaFertiOrganizer():
-    def restart_ferti_template(self) -> None:
-        """Reset the internal fertilizer template."""
-        self.fert_template = {
-            "is_applied": [],
-            "n_week": [],
-            "q_org": [],
-            "minn_f": [],
-            "minp_f": [],
-            "mink_f": []
-        }  
-    def __init__(self, planting_date):
-
-        self.planting_date = planting_date
-        self.restart_ferti_template()
-    
-    def create_fert_schedule(self,
-        weeks_after_planting: Sequence[int],
-        n_amounts: Sequence[float]): 
-
-        for wap,namount in zip(weeks_after_planting, n_amounts):
-            self.add_ferti_event(wap, namount)
-        
-        ferti_events = self.fert_template
-        self.restart_ferti_template()
-        return ferti_events
-        
-
-    def add_ferti_event(self, week_after_planting, n_amount):
-        n_amount = (n_amount + [0] * (3 - len(n_amount)))[:3] if isinstance(n_amount, list) else [n_amount, 0, 0]
-
-        self.fert_template['is_applied'].append(True)
-        self.fert_template['n_week'].append(week_after_planting)
-        for ftype,amount in zip(['n', 'p' , 'k'], n_amount): self.fert_template[f'min{ftype}_f'].append(amount)
-
-
-    def schedule_repeated_applications(self, application_interval: int, n_weeks: int, n_amount: float):
-        """
-        Schedule fertilization applications at regular intervals over a crop cycle.
-
-    Parameters
-    ----------
-        application_interval : int
-            Number of weeks between each fertilization application.
-        n_weeks : int
-            Total number of weeks to schedule fertilization over.
-        n_amount : float or list of float
-            Fertilizer amount(s). Scalar for N only, or list of up to 3 
-            elements [N, P, K]. Missing elements are filled with 0.
-
-        Returns
-        -------
-        dict
-            Fertilizer event template with keys: is_applied, n_week, 
-            minn_f, minp_f, mink_f.
-        """
-        weeks = list(range(0, n_weeks, application_interval))
-        return self.create_fert_schedule(weeks, [n_amount] * len(weeks))

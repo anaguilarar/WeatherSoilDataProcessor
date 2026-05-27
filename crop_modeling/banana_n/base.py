@@ -528,11 +528,12 @@ class PyBananaN(ModelBase):
         """
         density = self._enviroments[env_name].get('planting_density', 1300)
         nbweeks = self._enviroments[env_name]['cycle_duration_weeks']
+        fertischedule = self._enviroments[env_name].get('ferti_schedule', None)
         init_soil_parameters = soil_initial_conditions(self._enviroments[env_name])
 
         weather_weekly_data = banana_cycle_weekly_weather(self._enviroments[env_name], total_weeks=nbweeks)
 
-        ferti_schedule = banana_fertilizer_schedule(self._enviroments[env_name].get('fertilizerdata', None), nbweeks=nbweeks)
+        ferti_schedule = banana_fertilizer_schedule(fertischedule, nbweeks=nbweeks)
 
         model = BANANAField(nban=nban, density=density, init_soil_parameters=init_soil_parameters)
         history = model.simulate(nb_weeks = nbweeks, weather_data = weather_weekly_data, ferti_schedule = ferti_schedule)
