@@ -57,39 +57,40 @@ def model_selection(model: str, working_path: str):
     SpatialCM
         A dynamically generated class that inherits from the appropriate base.
     """
+    instance = None
     if model == "dssat":
         from ..dssat.base import DSSATBase
 
-        BaseClass = DSSATBase
+        instance = DSSATBase(working_path)
     elif model == "caf":
         from ..caf.base import PyCAF
 
-        BaseClass = PyCAF
+        instance = PyCAF(working_path)
     elif model == "simple_model":
         from ..simple_model.base import PySimpleModel
 
-        BaseClass = PySimpleModel
+        instance = PySimpleModel(working_path)
     elif model == "banana_n":
         from ..banana_n.base import PyBananaN
 
-        BaseClass = PyBananaN
+        instance = PyBananaN(working_path)
 
     else:
         raise ValueError(
             "Unsupported model type. Choose either 'dssat', 'caf' or 'simple_model'."
         )
 
-    class ModelClass(BaseClass):
-        """
-        ModelClass to handle model initialization for DSSAT and CAF models.
-        """
+    # class ModelClass(BaseClass):
+    #     """
+    #     ModelClass to handle model initialization for DSSAT and CAF models.
+    #     """
 
-        def __init__(self, working_path: str):
-            super().__init__(working_path)
+    #     def __init__(self, working_path: str):
+    #         super().__init__(working_path)
 
-            self.name = model
+    instance.name = model
 
-    return ModelClass(working_path)
+    return instance
 
 def summarise_array_by_group(nparray: np.ndarray, group_by_layer: np.ndarray = None) -> np.ndarray:
     """_summary_

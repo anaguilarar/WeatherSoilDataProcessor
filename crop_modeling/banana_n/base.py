@@ -385,6 +385,7 @@ class BANANAField:
             })
 
         return history 
+    
 class PyBananaN(ModelBase):
     def __init__(self, path):
         super().__init__(path)
@@ -402,20 +403,13 @@ class PyBananaN(ModelBase):
     def reset_enviroments(self):
         self._enviroments = {}
 
-    def set_up_crop(self, starting_date, cycle_duration_weeks, total_planting_windows = None, planting_density = None, verbose = True): ## TODO CROP PARAMETERS
+    def set_up_crop(self, starting_date, cycle_duration_weeks, total_planting_windows = None, planting_density = None, ferti_schedule = None, verbose = True): ## TODO CROP PARAMETERS
         """
         Sets up the environmental and crop data for the simulation cycle.
         
         Parameters:
         -----------
-        starting_date : str or datetime
-            The date the crop is planted (t=0).
-        time_step_weeks : int
-            The moving window size / calculation step (e.g., 1 for weekly, 2 for bi-weekly).
-        cycle_duration_weeks : int
-            The total length of the crop cycle in weeks.
-        verbose : bool
-            If True, prints progress messages.
+
         """
         
         if len(self._process_paths) == 0: self.find_envworking_paths(file_ext='csv')
@@ -431,7 +425,8 @@ class PyBananaN(ModelBase):
                 simulation_dates=dates,
                 cycle_duration_weeks=cycle_duration_weeks,
                 total_planting_windows = total_planting_windows,
-                planting_density = planting_density
+                planting_density = planting_density,
+                ferti_schedule = ferti_schedule
             )
 
             if verbose: print("crop data set up for {}".format(env_path))
