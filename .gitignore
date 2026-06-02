@@ -24,5 +24,6 @@ spatialdata/__pycache__/files_manager.cpython-39.pyc
 spatialdata/__pycache__/gis_functions.cpython-39.pyc
 spatialdata/__pycache__/soil_data.cpython-39.pyc
 spatialdata/__pycache__/utils.cpython-39.pyc
+village_sp_files/
 github_project_plan.md
 testsm.py
