@@ -1,26 +1,48 @@
-
+import concurrent.futures
 import os
-from datetime import datetime, timedelta
+import shutil
+from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
-from bayes_opt import BayesianOptimization
 import numpy as np
 import pandas as pd
-import shutil
-import concurrent.futures
-from tqdm import tqdm
-from omegaconf import OmegaConf
 import yaml
+from bayes_opt import BayesianOptimization
+from omegaconf import OmegaConf
+from tqdm import tqdm
 
 from spatialdata.soil_data import TEXTURE_CLASSES
+
 from ..dssat.output import DSSATOutputData
 from ..spatial_process import SpatialCM
 from .model_base import ReporterBase
-from .output_transforms import yield_data_summarized, ColumnNames
+from .output_transforms import ColumnNames, yield_data_summarized
 from .process import model_selection
+from spatialdata.utils import read_compressed_xarray
+
+NITROGEN_SCALE = 10
+
+DAYS_STEP_BEANS = {
+    'day1'  : [1, 4, 8],
+    'day2'  : [15, 20, 25],
+    'day3'  : [30, 35, 40]
+}
+
+DAYS_STEP_MAIZE = {
+    'day1'  : [1, 7, 14],
+    'day2'  : [21, 28, 35],
+    'day3'  : [42, 49, 56]
+}
+
+
+DAYS_BY_CROP = {
+    'maize': DAYS_STEP_MAIZE,
+    'bean': DAYS_STEP_BEANS
+}
 
 def fertilization_simulations(model, configuration, application_day, n_value, rm_simulation_folder = False, verbose = False, plantingWindow = 1, element_tooptimize = 'n'):
     configuration.MANAGEMENT.plantingWindow = plantingWindow
+
     if len(application_day) == 0:
         configuration.MANAGEMENT.fertilizer_schedule = None
         sim_experiment_path = os.path.join(model._process_paths[0],
@@ -28,20 +50,20 @@ def fertilization_simulations(model, configuration, application_day, n_value, rm
         
     else:
         if element_tooptimize == 'n': 
-            npk_schedule = [[i] for i in n_value]
+            npk_schedule = [[i*NITROGEN_SCALE] for i in n_value]
         elif element_tooptimize == 'p':
             npk_schedule = [[0,i,0] for i in n_value]
         elif element_tooptimize == 'k':
             npk_schedule = [[0,0,i] for i in n_value]
             
         configuration.MANAGEMENT.fertilizer_schedule = {'days_after_planting': application_day, 'npk': npk_schedule}
-        
         sim_experiment_path = os.path.join(model._process_paths[0],
                                     's'+'_'.join([str(i) for i in application_day]) +'_'+ '_'.join([str(i) for i in n_value]))
-        
+    
     model.set_up_crop(crop=configuration.CROP.name, cultivar=configuration.CROP.cultivar)
+    
     model.set_up_management(crop=configuration.CROP.name, cultivar=configuration.CROP.cultivar, verbose = verbose, **configuration.MANAGEMENT)
-
+    
     model.run(model.crop_code, crop=configuration.CROP.name ,planting_window=plantingWindow,
                             bin_path = configuration.GENERAL_INFO.bin_path, 
                             dssat_path = configuration.GENERAL_INFO.get('dssat_path', None), remove_tmp_folder=rm_simulation_folder, 
@@ -97,22 +119,23 @@ def yield_predictions_withapplications(min_split_interval = 1, rm_simulation_fol
     model_name = configuration.GENERAL_INFO.get('model', None)
     model = model_selection(model_name, working_path)
     model._process_paths = [working_path]
-    
+    crop_name = configuration.CROP.get('name', None)
+    days_tr = DAYS_BY_CROP[crop_name.lower()]
     day_values = []
     napp_values = []
     n = 1
-    ## get 
-    while True:
+    stopwhile = True
+    while stopwhile:
         day_value = kwargs.get(f"day{n}", None)
         napp_value = kwargs.get(f"{element_tooptimize}{n}", None)
         n+=1
         if day_value:
-            day_values.append(int(round(day_value)))
+            dayvalue =  days_tr[f"day{n-1}"][int(round(day_value))]
+            day_values.append(dayvalue)
             napp_values.append(int(round((napp_value))))
         else:
-            break
-    
-    total_n = np.sum(napp_values)
+            stopwhile = False
+    total_n = np.sum(napp_values) * NITROGEN_SCALE
 
     if total_n < 0:
         print(f"Warning: Total {element_tooptimize} applied is zero or negative.")
@@ -121,7 +144,7 @@ def yield_predictions_withapplications(min_split_interval = 1, rm_simulation_fol
         for i in range(len(day_values)-1):
             # Penalize invalid combinations by returning a very low NUE
             if (day_values[i+1] <= day_values[i] + min_split_interval): return -1e6
-    
+
     current_yield, n_uptake = yield_simulation(model, configuration, day_values, napp_values, 
                                 rm_simulation_folder = rm_simulation_folder, element_tooptimize = element_tooptimize)
     
@@ -162,10 +185,10 @@ class FertilizerBayesian(SpatialCM):
         Path to configuration file.
     """
 
-    def __init__(self, configuration_dict:Dict=None, configuration_path:str = None):
+    def __init__(self, configuration_dict:Dict=None, configuration_path:str = None, load_env_data: bool = True):
         
-        SpatialCM.__init__(self, configuration_dict=configuration_dict, configuration_path=configuration_path)
-        
+        SpatialCM.__init__(self, configuration_dict=configuration_dict, configuration_path=configuration_path, load_env_data = load_env_data)
+                
         self.reporter = ReporterBase()
         
         self._application_schedule = {
@@ -208,15 +231,21 @@ class FertilizerBayesian(SpatialCM):
             Site code to retrieve corresponding spatial data.
         """
         roi = self.geo_features.loc[self.geo_features['GEOCODIGO']==str(geocode)]
-        
+        village_info = self.config.SPATIAL_INFO.get('villages_folderpath', '')
         self.set_up_folders(site = geocode)
-
+        datauploaded = False
+        if not os.path.exists(self._dem_tmppath) and os.path.exists(os.path.join(village_info, str(geocode))):
+            datauploaded = True
+            for dataset in ['weather', 'soil', 'dem']:
+                fn = os.path.basename(self.__dict__[f'_{dataset}_tmppath'])
+                out_path = os.path.join(self.config.SPATIAL_INFO.villages_folderpath, str(geocode), fn.replace('.nc','.zip'))
+                read_compressed_xarray(out_path, self._tmp_path)
+                
         self.create_roi_sp_data(
-        roi=roi,
-        group_codes=TEXTURE_CLASSES,  # Codes for grouping data by texture
-        create_group_splayer=False,
-        export_spatial_data=True
-        )
+            roi=roi,
+            group_codes=TEXTURE_CLASSES,  # Codes for grouping data by texture
+            export_spatial_data = not datauploaded
+            )
         
         self._cm_envs = self.model._process_paths
     
@@ -293,14 +322,28 @@ class FertilizerBayesian(SpatialCM):
         """
         result_values = []
         reporter_keys = self._get_report_keys()
+        days_tr = DAYS_BY_CROP[self.crop.lower()]
+        
         for i in range(len(optresults)):
             reportvalues = {k: int(v) for k, v in optresults[i]['params'].items() if k in reporter_keys}
             reportvalues.update({reporter_keys[-1]:optresults[i]['target']})
+            n = 1
+            stopwhile = True
+            while stopwhile:
+                day_value = reportvalues.get(f"day{n}", None)
+                
+                if day_value is not None:
+                    reportvalues[f"n{n}"] = reportvalues[f"n{n}"]*NITROGEN_SCALE
+                    reportvalues[f"day{n}"] = days_tr[f"day{n}"][day_value]
+                    
+                else:
+                    stopwhile = False
+                n+=1   
             result_values.append(reportvalues)
         
         return pd.DataFrame(result_values)
     
-    def simulate_time_point(self, tp: int, starting_date: str, ending_date: str, n_iter: int = 10,
+    def simulate_time_point(self, tp: int, starting_date: str, ending_date: str = None, n_iter: int = 10,
                             date_format: str = '%Y-%m-%d', working_dir: Optional[str] = None,
                             init_points: int = 10, removeworking_path_folder: bool = True,
                             verbose: int = 0) -> pd.DataFrame:
@@ -335,10 +378,15 @@ class FertilizerBayesian(SpatialCM):
         working_dir = working_dir or  self.model._process_paths[0]
         new_pdate = datetime.strptime(starting_date,date_format) + timedelta(days=(7*(tp)))
         new_hdate = datetime.strptime(ending_date,date_format) + timedelta(days=(7*(tp)))
+        if ending_date is not None:
+            new_hdate = datetime.strptime(ending_date,date_format) + timedelta(days=(7*(tp)))
+            hdate = new_hdate.strftime(date_format)
+        else:
+            hdate = None
         n_applications = len(list(self.application_schedule.keys()))//2
         
         working_tmpdir = self.create_configuration_file(working_dir=working_dir,tp = tp, 
-                                pdate=new_pdate.strftime(date_format), hdate=new_hdate.strftime(date_format))
+                                pdate=new_pdate.strftime(date_format), hdate=hdate)
         ## I couldn't find a best way to pass through the function which time point should be focused in
         application_schedule = self.application_schedule.copy()
         application_schedule.update({'tp': (tp, tp+.0001)})
@@ -391,18 +439,27 @@ class FertilizerBayesian(SpatialCM):
         """
         start_from = start_from or self.config.MANAGEMENT.planting_date
         harvesting_date = harvesting_date or self.config.MANAGEMENT.harvesting_date
-        rangedata = tqdm(range(time_windows)) if verbose else range(time_windows)
+        
         self.model._process_paths = [self._cm_envs[env]]
         
-        if ncores != 0: 
-            with tqdm(total=time_windows) as pbar:
+        if ncores > 1: 
+            with tqdm(total=time_windows, disable = not verbose, desc = "Simulating Time Points") as pbar:
                 with concurrent.futures.ThreadPoolExecutor(max_workers=ncores) as executor:
-                    future_to_tr ={executor.submit(self.simulate_time_point, tp, start_from, harvesting_date, n_iter = n_iter,
-                                                date_format = date_format): (tp) for tp in range(time_windows)}
+                    future_to_tr ={executor.submit(_worker_simulate_tp,
+                self, tp, start_from, harvesting_date, n_iter, date_format): (tp) for tp in range(time_windows)}
                     for future in concurrent.futures.as_completed(future_to_tr):
                         future.result()
                         pbar.update(1)
         else:
             for tp in tqdm(range(time_windows)):
                 self.simulate_time_point(tp, start_from, harvesting_date, n_iter = n_iter, date_format=date_format)
-            
+
+
+def _worker_simulate_tp(instance, tp, start_from, harvesting_date, n_iter = 80,
+                                                date_format = '%Y-%m-%d'):
+    
+    return instance.simulate_time_point(tp = tp, 
+                                        starting_date = start_from, 
+                                        ending_date = harvesting_date, 
+                                        n_iter = n_iter,
+                                        date_format = date_format)
