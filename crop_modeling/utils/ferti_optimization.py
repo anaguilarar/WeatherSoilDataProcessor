@@ -66,8 +66,10 @@ def fertilization_simulations(model, configuration, application_day, n_value, rm
     
     model.run(model.crop_code, crop=configuration.CROP.name ,planting_window=plantingWindow,
                             bin_path = configuration.GENERAL_INFO.bin_path, 
-                            dssat_path = configuration.GENERAL_INFO.get('dssat_path', None), remove_tmp_folder=rm_simulation_folder, 
-                            sim_experiment_path= sim_experiment_path, verbose = verbose)
+                            dssat_path = configuration.GENERAL_INFO.get('dssat_path', None), 
+                            remove_tmp_folder=rm_simulation_folder, 
+                            sim_experiment_path= sim_experiment_path, verbose = verbose,
+                            ncores = configuration.GENERAL_INFO.ncores)
 
 def check_element_to_optimize(**kwargs):
     
