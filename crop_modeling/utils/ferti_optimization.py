@@ -1,6 +1,8 @@
 import concurrent.futures
 import os
 import shutil
+import stat
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional
 
@@ -19,6 +21,22 @@ from .model_base import ReporterBase
 from .output_transforms import ColumnNames, yield_data_summarized
 from .process import model_selection
 from spatialdata.utils import read_compressed_xarray
+
+def _rmtree_retry(path, retries=5, delay=0.3):
+    """Remove a directory tree with retries to handle Windows file-locking (WinError 145)."""
+    def _handle_readonly(func, p, exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path, onerror=_handle_readonly)
+            return
+        except OSError:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                shutil.rmtree(path, ignore_errors=True)
+
 
 NITROGEN_SCALE = 10
 
@@ -68,8 +86,8 @@ def fertilization_simulations(model, configuration, application_day, n_value, rm
                             bin_path = configuration.GENERAL_INFO.bin_path, 
                             dssat_path = configuration.GENERAL_INFO.get('dssat_path', None), 
                             remove_tmp_folder=rm_simulation_folder, 
-                            sim_experiment_path= sim_experiment_path, verbose = verbose,
-                            ncores = configuration.GENERAL_INFO.ncores)
+                            parallel_tr= False,
+                            sim_experiment_path= sim_experiment_path, verbose = verbose)
 
 def check_element_to_optimize(**kwargs):
     
@@ -379,7 +397,7 @@ class FertilizerBayesian(SpatialCM):
         """
         working_dir = working_dir or  self.model._process_paths[0]
         new_pdate = datetime.strptime(starting_date,date_format) + timedelta(days=(7*(tp)))
-        new_hdate = datetime.strptime(ending_date,date_format) + timedelta(days=(7*(tp)))
+        #new_hdate = datetime.strptime(ending_date,date_format) + timedelta(days=(7*(tp)))
         if ending_date is not None:
             new_hdate = datetime.strptime(ending_date,date_format) + timedelta(days=(7*(tp)))
             hdate = new_hdate.strftime(date_format)
@@ -409,7 +427,7 @@ class FertilizerBayesian(SpatialCM):
             os.path.basename(working_dir), n_applications))
         
         if removeworking_path_folder:
-            shutil.rmtree(working_tmpdir, ignore_errors=False)
+            _rmtree_retry(working_tmpdir)
         
         df_results = self.organize_results(optimizer.res)
         df_results.to_csv(fn)

@@ -3,7 +3,9 @@ import glob
 import os
 import platform
 import shutil
+import stat
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -19,6 +21,23 @@ from DSSATTools.run import CONFILE
 
 from ._base import DSSATFiles, coords_from_soil_file, section_indices
 from .files_export import from_soil_to_dssat, from_weather_to_dssat
+
+
+def _rmtree_retry(path, retries=5, delay=0.3):
+    """Remove a directory tree with retries to handle Windows file-locking (WinError 145)."""
+    def _handle_readonly(func, p, exc):
+        os.chmod(p, stat.S_IWRITE)
+        func(p)
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path, onerror=_handle_readonly)
+            return
+        except OSError:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                shutil.rmtree(path, ignore_errors=True)
+
 from .files_reading import (delimitate_header_indices,
                            join_row_using_header_indices)
 from .management import DSSATManagement_base
@@ -89,7 +108,7 @@ def check_exp_summary_name(workdir_path, run_path, experiment_id, removeworking_
         if not os.path.exists(os.path.join(run_path, f'Summary_{experiment_id}.OUT')):
             shutil.copyfile(os.path.join(workdir_path, 'Summary.OUT'), os.path.join(run_path,f'Summary_{experiment_id}.OUT'))
         if removeworking_path_folder:
-            shutil.rmtree(workdir_path, ignore_errors=False, onerror=None)
+            _rmtree_retry(workdir_path)
     else:
         valtoreturn = {os.path.basename(run_path): False}
         
