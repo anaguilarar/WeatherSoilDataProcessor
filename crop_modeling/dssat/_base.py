@@ -48,9 +48,9 @@ def section_to_df(lines, header_idx = 0):
     
     header_names = [lines[header_idx][i:j].strip()
                 for i, j in header_indices]
-    df = pd.DataFrame(data=data_rows, columns=header_names
+    df = pd.DataFrame(data=data_rows, columns=header_names, dtype=object
                         ) if len(data_rows[0]) == len(header_names) else pd.DataFrame(
-                            data=data_rows, columns=header_names[1:])
+                            data=data_rows, columns=header_names[1:], dtype=object)
     return df
 
 
@@ -120,7 +120,7 @@ class DSSATFiles():
         header_names = [section_header_str[i:j].strip()
                     for i, j in header_indices]
 
-        return pd.DataFrame(data=data_rows, columns=header_names[1:])
+        return pd.DataFrame(data=data_rows, columns=header_names[1:], dtype=object)
     
     @staticmethod
     def extract_section_asdf(path, section_name, sub_section_pattern):

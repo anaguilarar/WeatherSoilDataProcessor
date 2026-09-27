@@ -715,7 +715,8 @@ class SpatialCM():
         
         weatherm = xarray.open_dataset(self._weather_tmppath, engine = engine)
         soilm = xarray.open_dataset(self._soil_tmppath, engine = engine)
-        if self._dem_tmppath:
+        there_is_dem = self._dem_tmppath is not None and os.path.exists(self._dem_tmppath)
+        if there_is_dem:
             demm = xarray.open_dataset(self._dem_tmppath, engine = engine)
         else:
             demm = None
@@ -723,7 +724,7 @@ class SpatialCM():
         if target_crs:
             soilm = soilm.rio.reproject(target_crs)
             weatherm = weatherm.rio.reproject(target_crs)
-            if self._dem_tmppath:
+            if there_is_dem:
                 demm = demm.rio.reproject(target_crs)
             
         soilm = soilm.where(soilm[list(soilm.data_vars)[0]]<3.4028234663852886e+20, np.nan)
