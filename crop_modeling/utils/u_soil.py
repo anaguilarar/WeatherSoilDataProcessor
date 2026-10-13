@@ -57,7 +57,7 @@ def calculate_sks(sand: float = None,
     elif sand is None or silt is None or clay is None:
         raise ValueError("At least two of sand, silt, or clay percentages must be provided.")
     
-    datinfo =  [i for i in [sand, silt,clay, bulk_density, field_capacity, permanent_wp] if i]
+    datinfo =  [i for i in [sand, silt,clay, bulk_density, field_capacity, permanent_wp] if i is not None]
     
     soil_data = SoilData.from_array(
                 [datinfo]
@@ -65,9 +65,13 @@ def calculate_sks(sand: float = None,
     
     vangenuchten_pars, _, _ = rosetta(3, soil_data)
 
-    ks = (10**vangenuchten_pars[0][-1]) # Convert log(Ks) to Ks in cm/day / 24
-
-    ks = ks / 24  # Convert cm/day to cm/hour
+    # rosetta returns 7 columns: [theta_r, theta_s, alpha, npar, Ksat, K0, Lpar].
+    # Ksat is column 4, already in cm/day with the default 'arith' estimate.
+    # Column -1 is Lpar, the unsaturated-conductivity exponent, and taking
+    # 10**Lpar yielded ~0.01 cm/h for every soil — low enough that DSSAT
+    # reported "saturated hydraulic conductivity equal to zero" and discarded it.
+    KSAT_COLUMN = 4
+    ks = vangenuchten_pars[0][KSAT_COLUMN] / 24  # cm/day -> cm/hour
     return ks
 
 

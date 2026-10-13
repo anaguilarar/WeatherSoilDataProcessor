@@ -182,7 +182,8 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
     SOILGRID_MAPPING = {
         'clay': ['SLCL', 0.01],
         'silt': ['SLSI', 0.01],
-        'nitrogen': ['SLNI', 0.01],
+        # SoilGrids reports nitrogen in cg/kg: /100 -> g/kg, /10 again -> %.
+        'nitrogen': ['SLNI', 0.001],
         'bdod': ['SBDM', 0.01],
         'cfvo': ['SLCF', 0.1],
         'phh2o': ['SLHW', 0.1],
@@ -239,7 +240,11 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         else:
             self._dict_names = {'clay': ['SLCL', 0.1],
                                 'silt': ['SLSI', 0.1],
-                                'nitrogen': ['SLNI', 0.01],
+                                # SoilGrids reports nitrogen in cg/kg:
+                                # /100 -> g/kg, /10 again -> %. The previous
+                                # 0.01 left SLNI 10x too high (a C:N ratio
+                                # below 2, which is not physically possible).
+                                'nitrogen': ['SLNI', 0.001],
                                 'bdod': ['SBDM', 0.01],
                                 'cfvo': ['SLCF', 0.01],
                                 'phh2o': ['SLHW', 0.1],
