@@ -75,8 +75,10 @@ def find_soil_textural_class_in_nparray(sand,clay):
 
     cond1 = (sand>=85) & ((silt + clay*1.5) < 15 )
     cond2 = np.logical_and(np.logical_and(sand>70, sand<91),np.logical_and((silt + 1.5*clay) >= 15, (silt + 2*clay) < 30))
-    cond3 = np.logical_or(np.logical_and(np.logical_and(clay >= 7, clay < 20), np.logical_and(sand > 52, (silt + 2*clay) >= 30)),np.logical_and(clay < 7, silt < 50, sand>43))
-    cond4 = np.logical_and(np.logical_and(clay >= 7,clay < 27),np.logical_and(silt >= 28,silt < 50), sand <= 52)
+    #cond3 = np.logical_or(np.logical_and(np.logical_and(clay >= 7, clay < 20), np.logical_and(sand > 52, (silt + 2*clay) >= 30)),np.logical_and(clay < 7, silt < 50, sand>43))
+    cond3 = (((clay >= 7) & (clay < 20) & (sand > 52) & ((silt + 2*clay) >= 30)) | ((clay < 7) & (silt < 50) & (sand > 43)))
+    #cond4 = np.logical_and(np.logical_and(clay >= 7,clay < 27),np.logical_and(silt >= 28,silt < 50), sand <= 52)
+    cond4 = (clay >= 7) & (clay < 27) & (silt >= 28) & (silt < 50) & (sand <= 52)
     cond5 = ((silt >= 50) & (clay >= 12) & (clay < 27)) | ((silt >= 50) & (silt < 80) & (clay < 12))
     cond6 = (silt >= 80) & (clay < 12)
     cond7 = (clay >= 20) & (clay < 35) & (silt < 28) & (sand> 45)

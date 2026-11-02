@@ -444,37 +444,39 @@ def read_compressed_xarray(input_filepath: str, output_path:str = None, engine: 
     xarray.Dataset
         The loaded Dataset.
     """
+    import zipfile
+    import xarray
     input_path = os.path.dirname(input_filepath)
     input_filepath = os.path.basename(input_filepath)
     output_path = output_path if output_path else input_path
     
     if input_filepath.endswith('zip'):
-        with zipfile.ZipFile(os.path.join(input_path,input_filepath), 'r') as zip_object:
-            zip_object.extractall(output_path)        
+        with zipfile.ZipFile(os.path.join(input_path,input_filepath), 'r') as zf:
+            zf.extractall(output_path)        
         input_filepath = input_filepath.replace('.zip', '.nc')
 
     output_filepath = os.path.join(output_path, input_filepath)
     
     with xarray.open_dataset(output_filepath, engine = engine) as ds:
         data = ds.copy()
-    
     del ds    
     
-    data = data.astype(float)
     scale_values_factor = data.attrs['scale_values_factor']
-
+    nodata = data.attrs.get('nodata', None)
+    data = data.astype(float)
+    data = data/scale_values_factor
+        
     if data.attrs.get('dtype', None):
         data.attrs['dtype'] = 'float'
-    
-    data = data/scale_values_factor
-    nodata = data.attrs.get('nodata', None)
     if nodata:
-        data.attrs['nodata'] = nodata/scale_values_factor
-        for k in data.data_vars.keys():
-            data[k] = data[k].where(data[k] != nodata/scale_values_factor, np.nan)
+        data.attrs["nodata"] = nodata / scale_values_factor
+        for k in data.data_vars:
+            data[k] = data[k].where(data[k] != nodata / scale_values_factor, np.nan)
     if update_file:
-        encoding = set_encoding(data)
-        data.to_netcdf(output_filepath, encoding = encoding, engine = engine)
+        for k in data.data_vars:          # no compression for the temporary file
+            data[k].encoding.pop("zlib", None)
+            data[k].encoding.pop("complevel", None)
+        data.to_netcdf(output_filepath, engine=engine)
         
     del data
 
