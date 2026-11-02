@@ -454,14 +454,18 @@ def summarize_spatial_yields_by_time_window(xrdata, plantingWindow, target_dim_n
 def summarize_event_weather(weather, init_dates: pd.Series, end_dates: pd.Series, weathercol_index):
 
     minlong = int(((end_dates -  init_dates)/np.timedelta64(1, 'D')).min())
+    dates = weather['DATE'].values
+    values = weather.iloc[:, weathercol_index].to_numpy(dtype=float)
+    starts = np.searchsorted(dates, init_dates.values, side = 'left')
+    idx = starts[:, None] + np.arange(minlong)[None, :]
+    return values[idx].mean(axis = 0).T
+    # data = np.zeros((len(init_dates), len(weathercol_index), minlong))
+    # for i in range(len(init_dates)):
+    #     pdate = init_dates.values[i]
+    #     hdate = end_dates.values[i]
+    #     data[i] = weather.values[np.logical_and(weather['DATE']>=pdate,weather['DATE']<=hdate)][:minlong,weathercol_index].swapaxes(0,1)
 
-    data = np.zeros((len(init_dates), len(weathercol_index), minlong))
-    for i in range(len(init_dates)):
-        pdate = init_dates.values[i]
-        hdate = end_dates.values[i]
-        data[i] = weather.values[np.logical_and(weather['DATE']>=pdate,weather['DATE']<=hdate)][:minlong,weathercol_index].swapaxes(0,1)
-
-    return data.mean(axis=0)
+    # return data.mean(axis=0)
 
 def get_weather_event(yield_data, weather, summarized_dates, group_id, group_by, weathercol_index, date_column='PDAT', harvest_column = 'HDAT'):
     
