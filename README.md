@@ -187,6 +187,27 @@ MANAGEMENT:
   template: 'crop_modeling/dssat/exp_files/KEAG8104.MZX'
 
 ```
+
+### Honduras national soil maps (SH) in SoilGrids format
+
+`sh_soil_to_soilgrids.py` converts the Suelos de Honduras (SH) datacube into the SoilGrids variable names and units that the DSSAT soil writer expects, keeping the SH ~30 m grid.
+
+```bash
+python sh_soil_to_soilgrids.py --sh soil_hnd_sh.nc --ref hnd_soilgrids_data.nc --out hnd_sh_soilgrids_format.nc --water ptf
+```
+
+**Water retention (`--water ptf`).** The three SoilGrids water-retention layers are estimated per pixel with the Saxton & Rawls (2006) pedotransfer functions. The inputs are SH sand and clay (as fractions, after rescaling sand + silt + clay to 100 %) and organic matter (MO %, capped at 8 %, the equations' fitted range); bulk density is not used.
+
+| Layer | Pressure | DSSAT field |
+|---|---|---|
+| `wv1500` | 1500 kPa (wilting point) | SLLL |
+| `wv0033` | 33 kPa (field capacity) | SDUL |
+| `wv0010` | 10 kPa | SSAT |
+
+Each layer is stored as cm³/cm³ × 1000, the SoilGrids convention. Over Honduras these estimates run wetter than SoilGrids (mean bias +0.11, +0.05 and +0.03 cm³/cm³ for `wv0010`, `wv0033` and `wv1500`). With `--water soilgrids` (the default) the SoilGrids layers are used instead.
+
+**Deeper layers.** The SH maps are a single topsoil layer, written to the 0–5, 5–15 and 15–30 cm depths. The 30–60 cm layer of every variable is taken from SoilGrids, resampled by nearest neighbour onto the SH grid. The exceptions are `k` and `p`, which have no SoilGrids equivalent and repeat the topsoil value. SoilGrids also supplies `cfvo` and `nitrogen` at all depths, and fills SH no-data pixels such as urban areas and water bodies (disable with `--no-fill-gaps`).
+
 ## Google Colab Examples
 
 You can explore the functionality of this repository using Google Colab notebooks located in the google colab examples folder:
@@ -213,5 +234,7 @@ Example 4 [(dssat_spatial_crop_simulation_pixel)](https://github.com/anaguilarar
 
 
 ## References
+
+Saxton, K. E., & Rawls, W. J. (2006). Soil water characteristic estimates by texture and organic matter for hydrologic solutions. Soil Science Society of America Journal, 70(5), 1569–1578. https://doi.org/10.2136/sssaj2005.0117
 
 Van Oijen, M., Haggar, J., Barrios, M., Büchi, L., Cerda, R., Cerretelli, S., López, E., De Melo, E., Filho, V., & Ospina, A. (2022). Ecosystem services from coffee agroforestry in Central America: estimation using the CAF2021 model. 1, 3. https://doi.org/10.1007/s10457-022-00755-6

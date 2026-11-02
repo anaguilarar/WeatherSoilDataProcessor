@@ -197,7 +197,7 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
     ALBEDOS = (0.12, 0.12, 0.13, 0.13, 0.12, 0.13, 0.13, 0.14, 0.13, 0.13, 0.16, 0.19, 0.13)
     RUNOFF_CURVES = (73.0, 73.0, 73.0, 73.0, 73.0, 73.0, 73.0, 73.0, 68.0, 73.0, 68.0, 68.0, 73.0)
     TEXTURE_CLASSES = ("clay", "silty clay", "sandy clay", "clay loam", "silty clay loam", "sandy clay loam", "loam", 
-                    "silty loam", "sandy loam", "silt", "loamy sand", "sand", "unknown")
+                    "silt loam", "sandy loam", "silt", "loamy sand", "sand", "unknown")
     
     SUM_TEXTURE_CLASSES = ("C", "SIC", "SC", "CL", "SICL", "SCL", "L", "SIL", "SL", "SI", "LS", "S", "unknown")
 
