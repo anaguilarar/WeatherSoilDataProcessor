@@ -193,21 +193,26 @@ def oni_season(dates: pd.DatetimeIndex) -> list:
     list
         List of ONI classifications ('La Niña', 'El Niño', or 'Normal') for each date.
     """
+    seasons = np.array(list(threemonth_dict.keys()))[dates.dt.month.values - 1]
+    key = pd.MultiIndex.from_arrays([dates.dt.year.values, seasons])
+    anom = (ONI_DATA.drop_duplicates(["YR", "SEAS"]).set_index(["YR", "SEAS"])["ANOM"]
+                .reindex(key).to_numpy())
+    return list(np.where(anom <= -0.5, "La Niña", np.where(anom >= 0.5, "El Niño", "Normal")))
 
-    yr = dates.dt.year.values
-    month = dates.dt.month.values
-    onivalue = []
-    for idx in range(month.shape[0]):
-        subset_year, subset_month = yr[idx], month[idx]
-        oniseason = list(threemonth_dict.keys())[subset_month-1]
-        oniyear = ONI_DATA.loc[ONI_DATA.YR == subset_year]
-        anomaly = oniyear.loc[oniyear.SEAS == oniseason]['ANOM'].values[0]
-        if anomaly<=-0.5: oni = 'La Niña'
-        elif anomaly>=0.5: oni = 'El Niño'
-        else: oni = 'Normal'
-        onivalue.append(oni)
+    # yr = dates.dt.year.values
+    # month = dates.dt.month.values
+    # onivalue = []
+    # for idx in range(month.shape[0]):
+    #     subset_year, subset_month = yr[idx], month[idx]
+    #     oniseason = list(threemonth_dict.keys())[subset_month-1]
+    #     oniyear = ONI_DATA.loc[ONI_DATA.YR == subset_year]
+    #     anomaly = oniyear.loc[oniyear.SEAS == oniseason]['ANOM'].values[0]
+    #     if anomaly<=-0.5: oni = 'La Niña'
+    #     elif anomaly>=0.5: oni = 'El Niño'
+    #     else: oni = 'Normal'
+    #     onivalue.append(oni)
         
-    return onivalue
+    # return onivalue
 
 def identify_enso_events(oni_data, target_dates):
     """
