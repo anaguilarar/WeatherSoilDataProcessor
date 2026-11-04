@@ -128,7 +128,10 @@ def from_soil_to_dssat(df, group_by = None, depth_name ='depth',
             ddsat_soilgrid = DSSATSoil_fromSOILGRIDS(long = long, lat = lat, sand = sand, clay = clay, country = country,
                                                     site = site, id = soil_id)
             
-            ddsat_soilgrid.add_soil_layers_from_df(subset)
+            layers = ddsat_soilgrid.add_soil_layers_from_df(subset)
+            if not layers:
+                print(f"no complete soil layers for {output_path}, TR.SOL not written")
+                return None
             if not os.path.exists(output_path): os.mkdir(output_path)
             fn = os.path.join(output_path, 'TR.SOL')
             ddsat_soilgrid.write(fn)

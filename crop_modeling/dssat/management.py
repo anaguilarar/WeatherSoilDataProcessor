@@ -331,6 +331,8 @@ class Management_FileModifier(DSSATFileModifier):
         hrtype = 'R' if kwargs.get('harvest',True) else 'M'
         smodel = -99#kwargs.get('simulation_cropmodel', -99)
         crop = kwargs.get('crop',None)
+        # NITRO: 'Y' simulates the soil N balance (N stress), 'N' turns it off (no N stress)
+        nitro = kwargs.get('nitro', None) or 'Y'
         newsection = []
         for i in range(self.n_windows):
             simulation_list = []
@@ -345,7 +347,7 @@ class Management_FileModifier(DSSATFileModifier):
             orig_df[1].loc[:,'SYMBI'] = 'Y'
             if crop is not None and crop.lower() != 'cassava':
                 #if ferttype == 'R': orig_df[1].loc[:,'NITRO'] = 'Y'
-                orig_df[1].loc[:,'NITRO'] = 'Y'
+                orig_df[1].loc[:,'NITRO'] = nitro
             orig_df[2].loc[:,'PHOTO'] = 'C' 
             orig_df[2].loc[:,'NSWIT'] = '1'
             orig_df[2].loc[:,'MESOM'] = 'G'
@@ -621,6 +623,7 @@ class DSSATManagement_base(Management_FileModifier):
         self.n_windows = kwargs.get('plantingWindow',1)
         self.fertilizer = kwargs.get('fertilizer_schedule',None)
         self.index_soilwat = kwargs.get('index_soilwat',1)
+        self.nitrogen_simulation = kwargs.get('nitrogen_simulation', None)
         self._long = kwargs.get('long',None)
         self._lat = kwargs.get('lat',None)
         
@@ -713,7 +716,8 @@ class DSSATManagement_base(Management_FileModifier):
         trlines = self.treatment_modifier(fertilizer = ferti, harvest = harvest_schedule)
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears, fertilizer = ferti, crop = self.crop, harvest = harvest_schedule,
-                                                        simulation_cropmodel = config_management.MANAGEMENT.get('simulation_cropmodel', -99))
+                                                        simulation_cropmodel = config_management.MANAGEMENT.get('simulation_cropmodel', -99),
+                                                        nitro = self.nitrogen_simulation)
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         autman_listlines = self.automatic_management_modifier()
         

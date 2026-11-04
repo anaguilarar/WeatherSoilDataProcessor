@@ -25,9 +25,21 @@ p          mg/kg (not SoilGrids)       P mg kg⁻¹                    as is
 wv0010     10⁻³ cm³/cm³ (θ at 10 kPa)  — (SoilGrids) or PTF         see ``water``
 wv0033     10⁻³ cm³/cm³ (θ at 33 kPa)  — (SoilGrids) or PTF         see ``water``
 wv1500     10⁻³ cm³/cm³ (θ at 1.5 MPa) — (SoilGrids) or PTF         see ``water``
-cfvo       cm³/dm³                     — (SoilGrids)                 —
-nitrogen   cg/kg                       — (SoilGrids)                 —
+cfvo       cm³/dm³                     — (SoilGrids, or 0)           see ``cfvo``
+nitrogen   cg/kg                       MO % (via soc)               soc ÷ C:N, see ``nitrogen``
 =========  ==========================  ===========================  ==============
+
+Total nitrogen is derived from the SH organic carbon, N = soc / (C:N), so the
+profile is consistent with the local organic matter.  By default the C:N ratio
+is SoilGrids' own ratio at the same pixel and depth (``--nitrogen
+cn-soilgrids``); ``--nitrogen cn-fixed --cn-ratio 10`` uses one ratio, and
+``--nitrogen soilgrids`` copies SoilGrids nitrogen as earlier versions did
+(it leaves the SH topsoil with C:N ≈ 4-8, because SH organic carbon is lower
+than SoilGrids').
+
+SH has no coarse-fragment layer: ``--cfvo soilgrids`` (default) takes it from
+SoilGrids, ``--cfvo zero`` sets 0 at the SH depths so the topsoil is entirely
+SH (no stones assumed).
 
 The SH ``cec`` layer must hold cation exchange capacity (CIC), not
 electrical conductivity; a warning is logged if its values look like CE.
@@ -37,7 +49,10 @@ units (the DSSAT soil writer ignores them).
 The SH maps hold one topsoil layer replicated over 0-5/5-15/15-30 cm.  Depths
 deeper than that (30-60 cm) are taken from SoilGrids; ``k`` and ``p`` repeat
 the topsoil value there, because the DSSAT reader drops any depth that has a
-NaN in any variable.
+NaN in any variable.  SoilGrids has gaps (mostly urban areas) where SH has
+data; at those deeper depths each gap cell takes the value of the nearest valid
+SoilGrids cell (up to ``--deep-fill-km``), otherwise the profile of those
+pixels would end at 30 cm.
 
 Memory: variables are computed and written one at a time, so the peak is about
 one variable at full resolution — roughly (number of depths + 2) x 1.1 GB for
@@ -64,6 +79,7 @@ import numpy as np
 import rioxarray  # noqa: F401  (registers the .rio accessor)
 import xarray as xr
 from rasterio.enums import Resampling
+from scipy import ndimage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
@@ -87,8 +103,10 @@ UNITS: dict[str, str] = {
     "p": "mg/kg", "cfvo": "cm3/dm3", "nitrogen": "cg/kg",
     "wv0010": "10^-3 cm3/cm3", "wv0033": "10^-3 cm3/cm3", "wv1500": "10^-3 cm3/cm3",
 }
-#: Variables the SH survey does not provide; always taken from SoilGrids.
+#: Variables the SH survey does not provide; taken from SoilGrids (nitrogen only with --nitrogen soilgrids).
 FROM_SOILGRIDS: tuple[str, ...] = ("cfvo", "nitrogen")
+#: Limits of the C:N ratio used to derive nitrogen (guards against tiny SoilGrids soc or N).
+CN_LIMITS: tuple[float, float] = (5.0, 25.0)
 WATER_VARS: tuple[str, ...] = ("wv0010", "wv0033", "wv1500")
 #: SoilGrids nodata (float32 max) — anything above this is treated as missing.
 _NODATA_THRESHOLD = 1e20
@@ -165,6 +183,31 @@ def soilgrids_on_sh_grid(layer: xr.DataArray, template: xr.DataArray) -> xr.Data
     return out.where(np.isfinite(out)).assign_coords(x=template.x, y=template.y)
 
 
+def fill_nearest(layer: xr.DataArray, max_km: float) -> xr.DataArray:
+    """Fill NaN cells of a SoilGrids layer with the nearest valid cell, up to ``max_km`` away."""
+    a = layer.values
+    gaps = ~np.isfinite(a)
+    if max_km <= 0 or not gaps.any() or gaps.all():
+        return layer
+    res_km = abs(float(layer.x[1] - layer.x[0])) / 1000.0  # SoilGrids grid is in metres
+    dist, (iy, ix) = ndimage.distance_transform_edt(gaps, return_indices=True)
+    filled = a[iy, ix]
+    filled[dist * res_km > max_km] = np.nan
+    return layer.copy(data=filled)
+
+
+def nitrogen_from_soc(soc: xr.DataArray, cn: xr.DataArray | float) -> xr.DataArray:
+    """Total nitrogen (cg/kg) from organic carbon (dg/kg) and a mass C:N ratio."""
+    return soc * 10.0 / cn   # dg/kg x 10 = cg/kg
+
+
+def soilgrids_cn(ref: xr.Dataset, depth: str, template: xr.DataArray) -> xr.DataArray:
+    """SoilGrids C:N ratio (mass) at one depth on the SH grid, limited to CN_LIMITS."""
+    soc = soilgrids_on_sh_grid(ref["soc"].sel(depth=depth), template)
+    n = soilgrids_on_sh_grid(ref["nitrogen"].sel(depth=depth), template)
+    return (soc * 10.0 / n.where(n > 0)).clip(*CN_LIMITS)
+
+
 def sh_layers_in_soilgrids_units(sh: xr.Dataset, water: str) -> dict[str, xr.DataArray]:
     """SH topsoil layers, lazily converted to SoilGrids units.
 
@@ -198,6 +241,10 @@ def convert(
     water: str = "soilgrids",
     fill_gaps: bool = True,
     bbox: tuple[float, float, float, float] | None = None,
+    nitrogen: str = "cn-soilgrids",
+    cn_ratio: float = 10.0,
+    cfvo: str = "soilgrids",
+    deep_fill_km: float = 5.0,
 ) -> None:
     """Write the SH cube as a SoilGrids-format cube on the SH ~30 m grid.
 
@@ -222,6 +269,16 @@ def convert(
     bbox : tuple[float, float, float, float] | None
         ``(xmin, ymin, xmax, ymax)`` in degrees to process only part of the
         SH grid — handy for a quick test before the full run.
+    nitrogen : {"cn-soilgrids", "cn-fixed", "soilgrids"}
+        Total nitrogen at the SH depths: SH soc ÷ SoilGrids C:N of the same
+        pixel and depth (default), SH soc ÷ ``cn_ratio``, or SoilGrids nitrogen.
+    cn_ratio : float
+        C:N ratio for ``nitrogen="cn-fixed"``, and where SoilGrids has no C:N.
+    cfvo : {"soilgrids", "zero"}
+        Coarse fragments at the SH depths: SoilGrids, or 0 wherever SH has data.
+    deep_fill_km : float
+        Below the SH depths, fill SoilGrids gaps from the nearest valid
+        SoilGrids cell up to this distance (0 = no filling).
     """
     ref = open_reference(ref_path)
     ref_depths = [str(d) for d in ref.depth.values]
@@ -253,7 +310,8 @@ def convert(
     if missing:
         raise KeyError(f"{missing} are neither in SH nor in the reference cube")
 
-    from_sg = list(FROM_SOILGRIDS) + ([] if water == "ptf" else list(WATER_VARS))
+    from_sg = [v for v in FROM_SOILGRIDS if (v != "nitrogen" or nitrogen == "soilgrids")
+               and (v != "cfvo" or cfvo == "soilgrids")] + ([] if water == "ptf" else list(WATER_VARS))
     attrs = {
         "crs": sh_crs.to_wkt(),  # read first by get_crs_fromxarray
         "source": "Suelos de Honduras (SH) in SoilGrids units on the SH grid",
@@ -261,8 +319,12 @@ def convert(
         "water_retention": "Saxton & Rawls (2006)" if water == "ptf" else "SoilGrids",
         "from_soilgrids": ", ".join(from_sg)
         + f"; every variable below {sh_depths[-1]} cm"
+        + (f" (gaps filled from the nearest SoilGrids cell up to {deep_fill_km:g} km)" if deep_fill_km > 0 else "")
         + ("; SH no-data pixels" if fill_gaps else ""),
         "sh_only": "k, p (topsoil value repeated at every depth)",
+        "nitrogen": {"cn-soilgrids": "SH soc / SoilGrids C:N (same pixel and depth)",
+                     "cn-fixed": f"SH soc / C:N {cn_ratio}", "soilgrids": "SoilGrids"}[nitrogen],
+        "cfvo": "SoilGrids" if cfvo == "soilgrids" else "0 at the SH depths (no SH layer)",
     }
 
     for i, v in enumerate(out_vars):
@@ -271,12 +333,29 @@ def convert(
         layers = []
         for depth in ref_depths:
             # SH-only variables (k, p) repeat the topsoil value at every depth
-            if sh_layer is not None and (depth in sh_depths or v not in ref):
+            if v == "nitrogen" and nitrogen != "soilgrids" and depth in sh_depths:
+                soc = top["soc"].compute()
+                if fill_gaps:
+                    soc = soc.fillna(soilgrids_on_sh_grid(ref["soc"].sel(depth=depth), template))
+                # where SoilGrids has no C:N, fall back to the fixed ratio
+                cn = soilgrids_cn(ref, depth, template).fillna(cn_ratio) if nitrogen == "cn-soilgrids" else cn_ratio
+                da = nitrogen_from_soc(soc, cn)
+                if fill_gaps:
+                    da = da.fillna(soilgrids_on_sh_grid(ref[v].sel(depth=depth), template))
+            elif v == "cfvo" and cfvo == "zero" and depth in sh_depths:
+                soc = top["soc"].compute()
+                da = xr.zeros_like(soc).where(soc.notnull())   # 0 wherever SH has data
+                if fill_gaps:
+                    da = da.fillna(soilgrids_on_sh_grid(ref[v].sel(depth=depth), template))
+            elif sh_layer is not None and (depth in sh_depths or v not in ref):
                 da = sh_layer
                 if fill_gaps and v in ref and depth in sh_depths:
                     da = da.fillna(soilgrids_on_sh_grid(ref[v].sel(depth=depth), template))
             else:
-                da = soilgrids_on_sh_grid(ref[v].sel(depth=depth), template)
+                sg = ref[v].sel(depth=depth)
+                if depth not in sh_depths:
+                    sg = fill_nearest(sg, deep_fill_km)
+                da = soilgrids_on_sh_grid(sg, template)
             layers.append(da.drop_vars(["depth", "spatial_ref"], errors="ignore"))
 
         cube = xr.concat(layers, dim="depth").assign_coords(depth=ref_depths)
@@ -304,6 +383,15 @@ def parse_args() -> argparse.Namespace:
                    help="Source of wv0010/wv0033/wv1500")
     p.add_argument("--no-fill-gaps", action="store_true",
                    help="Leave SH no-data pixels as NaN instead of filling from SoilGrids")
+    p.add_argument("--nitrogen", choices=["cn-soilgrids", "cn-fixed", "soilgrids"], default="cn-soilgrids",
+                   help="Total N at the SH depths: SH soc / SoilGrids C:N (default), SH soc / --cn-ratio, "
+                        "or SoilGrids N")
+    p.add_argument("--cn-ratio", type=float, default=10.0, help="C:N ratio for --nitrogen cn-fixed")
+    p.add_argument("--cfvo", choices=["soilgrids", "zero"], default="soilgrids",
+                   help="Coarse fragments at the SH depths: SoilGrids, or 0 (topsoil entirely SH)")
+    p.add_argument("--deep-fill-km", type=float, default=5.0,
+                   help="Below the SH depths, fill SoilGrids gaps from the nearest valid cell up to "
+                        "this distance in km (0 = off)")
     p.add_argument("--bbox", nargs=4, type=float, metavar=("XMIN", "YMIN", "XMAX", "YMAX"),
                    help="Only process this box (degrees) — for a quick test")
     return p.parse_args()
@@ -312,4 +400,4 @@ def parse_args() -> argparse.Namespace:
 if __name__ == "__main__":
     a = parse_args()
     convert(a.sh, a.ref, a.out, tuple(a.sh_depths), a.water, not a.no_fill_gaps,
-            tuple(a.bbox) if a.bbox else None)
+            tuple(a.bbox) if a.bbox else None, a.nitrogen, a.cn_ratio, a.cfvo, a.deep_fill_km)

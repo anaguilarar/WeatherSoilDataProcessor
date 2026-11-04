@@ -28,3 +28,5 @@ village_sp_files/
 github_project_plan.md
 testsm.py
 run_dssat_n_optimization.py
+data/maize_area_village_spam2020.csv
+validation_maize/

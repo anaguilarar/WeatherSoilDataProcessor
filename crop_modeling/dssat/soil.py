@@ -8,7 +8,11 @@ from ._base import section_indices
 from .files_reading import delimitate_header_indices
 from ..utils.u_soil import find_soil_textural_class, calculate_sks, slu1
 from DSSATTools.soil import SoilProfile, SoilLayer
-            
+
+
+REQUIRED_LAYER_PARS = ("SLLL", "SDUL", "SBDM", "SLCL", "SLSI")
+MAX_SOIL_DEPTH = None  
+
 class DSSATSoil_base():
     """
     A utility class for handling DSSAT soil files.
@@ -246,7 +250,7 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
                                 # below 2, which is not physically possible).
                                 'nitrogen': ['SLNI', 0.001],
                                 'bdod': ['SBDM', 0.01],
-                                'cfvo': ['SLCF', 0.01],
+                                'cfvo': ['SLCF', 0.1],
                                 'phh2o': ['SLHW', 0.1],
                                 'soc': ['SLOC', 0.01],
                                 'cec': ['SCEC', 0.1],
@@ -301,7 +305,8 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
             soillayers.append((depth, dict_dssat))
         return soillayers
     
-    def add_soil_layers_from_df(self, df: pd.DataFrame, depth_col_name: str = 'depth') -> list:
+    
+    def add_soil_layers_from_df(self, df: pd.DataFrame, depth_col_name: str = 'depth', max_depth=None) -> list:
         """
         Add soil layers from a DataFrame and convert them to DSSAT format.
 
@@ -317,13 +322,29 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         list            List of soil layers added to the profile.
         """
         #soil.SoilLayer(20, {'SLCL': 50, 'SLSI': 45}),
-        listvals = self.from_df_to_dssat_list(df, depth_col_name= depth_col_name)
-        ## sort depths 
-        sortedbydepth = np.argsort([depth for depth,val in listvals])
-        listvals = [listvals[i] for i in sortedbydepth]
-        soillayers = [SoilLayer(d, v) for d,v in listvals]
-        for layer in soillayers: self.add_layer(layer)
+        # listvals = self.from_df_to_dssat_list(df, depth_col_name= depth_col_name)
+        # ## sort depths 
+        # sortedbydepth = np.argsort([depth for depth,val in listvals])
+        # listvals = [listvals[i] for i in sortedbydepth]
+        # soillayers = [SoilLayer(d, v) for d,v in listvals]
+        # for layer in soillayers: self.add_layer(layer)
         
+        # return listvals
+        max_depth = MAX_SOIL_DEPTH if max_depth is None else max_depth
+        listvals = self.from_df_to_dssat_list(df, depth_col_name=depth_col_name)
+        sortedbydepth = np.argsort([depth for depth, val in listvals])
+        listvals = [listvals[i] for i in sortedbydepth]
+        if max_depth:
+            listvals = [(d, v) for d, v in listvals if d <= max_depth]
+        complete = [all(v.get(k) is not None and np.isfinite(v[k]) for k in REQUIRED_LAYER_PARS)
+                    for _, v in listvals]
+        nkeep = complete.index(False) if False in complete else len(complete)
+        if nkeep < len(listvals):
+            print(f"soil profile cut at {listvals[nkeep - 1][0] if nkeep else 0} cm: "
+                f"layer {listvals[nkeep][0]} cm has no data for {REQUIRED_LAYER_PARS}")
+        listvals = listvals[:nkeep]
+        for d, v in listvals:
+            self.add_layer(SoilLayer(d, v))
         return listvals
             
     def soil_general_soilline_parameters(self):
