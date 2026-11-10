@@ -33,8 +33,9 @@ def summary(out):
             for f in glob.glob(os.path.join(out, 'comparison_nitro*', '*', 'soil_source_comparison.csv'))]
     t = pd.concat(rows)
     cols = ['nitro', 'cultivar_code', 'level', 'source_type', 'n_units', 'rmse_local', 'rmse_soilgrids',
-            'd_rmse', 'd_rmse_lo', 'd_rmse_hi', 'p_one_sided']
-    t = t[cols].sort_values(['level', 'source_type', 'nitro', 'cultivar_code'])
+            'd_rmse', 'd_rmse_lo', 'd_rmse_hi', 'p_one_sided', 'p_two_sided', 'bias_local', 'bias_soilgrids',
+            'd_ubrmse', 'd_ubrmse_lo', 'd_ubrmse_hi', 'r_local', 'r_soilgrids']
+    t = t[[c for c in cols if c in t.columns]].sort_values(['level', 'source_type', 'nitro', 'cultivar_code'])
     t.to_csv(os.path.join(out, 'soil_source_comparison_all.csv'), index=False)
     pd.set_option('display.width', 200)
     print(t.round(3).to_string(index=False))

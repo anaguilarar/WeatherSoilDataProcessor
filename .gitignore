@@ -30,3 +30,8 @@ testsm.py
 run_dssat_n_optimization.py
 data/maize_area_village_spam2020.csv
 validation_maize/
+validation_bean/
+validation_deliverables/
+data/bean_area_village_spam2020.csv
+scripts/zamorano_climate_comparison.py
+scripts/zamorano_scenarios.py

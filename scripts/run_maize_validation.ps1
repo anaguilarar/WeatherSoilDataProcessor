@@ -39,7 +39,7 @@ function Validate([string[]]$soil, [string]$nitro, [string]$run, [string]$work, 
             @('--nitro', $nitro, '--out', "$OUT/$run", '--work-dir', $work) + $extra)
 }
 
-function Compare([string]$nitro, [string]$cultivars) {
+function Compare-SoilSources([string]$nitro, [string]$cultivars) {
     foreach ($code in ($cultivars -split ',' | ForEach-Object { ($_ -split ':')[0] })) {
         Run-Py @('scripts/compare_soil_sources.py', '--a', "$OUT/local_nitro$nitro", '--b', "$OUT/soilgrids_nitro$nitro",
                  '--labels', 'local,soilgrids', '--cultivar', $code, '--out', "$OUT/comparison_nitro$nitro/$code")
@@ -61,12 +61,12 @@ Validate $LOCAL_SOIL 'Y' 'local_nitroY' 'runs_fin_l' @('--cultivars', $CULTIVARS
 Validate $SG_SOIL 'Y' 'soilgrids_nitroY' 'runs_fin_s' @('--cultivars', $CULTIVARS)
 
 # ---- 3. local maps vs SoilGrids, one comparison per cultivar ------------------------------------
-Compare 'Y' $CULTIVARS
+Compare-SoilSources 'Y' $CULTIVARS
 
 # ---- 4. sensitivity: the same cultivars without N stress (NITRO = N) -----------------------------
 Validate $LOCAL_SOIL 'N' 'local_nitroN' 'runs_sen_l' @('--cultivars', $CULTIVARS)
 Validate $SG_SOIL 'N' 'soilgrids_nitroN' 'runs_sen_s' @('--cultivars', $CULTIVARS)
-Compare 'N' $CULTIVARS
+Compare-SoilSources 'N' $CULTIVARS
 
 # ---- summary: delta RMSE (SoilGrids - local) per cultivar and NITRO -------------------------------
 Run-Py @('scripts/maize_validation_steps.py', 'summary', $OUT)

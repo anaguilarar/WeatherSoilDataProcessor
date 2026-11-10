@@ -4,7 +4,10 @@ Reads observed_vs_predicted.csv (one value per unit and season) of two validate_
 keeps the rows present in both, and estimates per level and source type
   RMSE, MAE, bias and R2 of each source with 95% cluster-bootstrap intervals (units resampled),
   delta = metric(B) - metric(A) on the same resamples (paired), its 95% interval, and
-  p_one_sided = share of replicates with RMSE(A) >= RMSE(B) (H1: A has the lower RMSE).
+  p_one_sided = share of replicates with RMSE(A) >= RMSE(B) (H1: A has the lower RMSE),
+  p_two_sided = 2 min(p, 1 - p), and the same for the bias-free RMSE (ubrmse = SD of the errors) and the
+  correlation r, which show whether a source follows the pattern across units and seasons better
+  regardless of a constant offset (e.g. the missing fertiliser in unfertilised runs).
 
 Usage (from the repository root)
   python scripts/compare_soil_sources.py --a validation_maize/local --b validation_maize/soilgrids \
@@ -61,21 +64,28 @@ def main():
         for k, label in enumerate((la, lb)):
             m = metrics(pd.DataFrame({'obs_t_ha': o, 'pred_t_ha': preds[:, k], 'unit': sub['unit']}))
             row.update({'n': int(m['n']), 'n_units': int(m['n_units'])})
-            for name in ('rmse', 'mae', 'bias', 'r2', 'r2_pearson'):
+            for name in ('rmse', 'mae', 'bias', 'r2', 'r2_pearson', 'ubrmse', 'r'):
                 row[f'{name}_{label}'] = m[name]
-            for name in ('rmse', 'r2'):
+            for name in ('rmse', 'r2', 'ubrmse', 'r'):
                 row[f'{name}_{label}_lo'], row[f'{name}_{label}_hi'] = np.nanpercentile(boot[name][:, k], [2.5, 97.5])
-        for name in ('rmse', 'mae', 'r2'):
+        for name in ('rmse', 'mae', 'r2', 'ubrmse', 'r'):
             d = boot[name][:, 1] - boot[name][:, 0]
             row[f'd_{name}'] = row[f'{name}_{lb}'] - row[f'{name}_{la}']
             row[f'd_{name}_lo'], row[f'd_{name}_hi'] = np.nanpercentile(d, [2.5, 97.5])
         row['p_one_sided'] = float(np.mean(boot['rmse'][:, 0] >= boot['rmse'][:, 1]))
+        row['p_two_sided'] = min(1.0, 2 * min(row['p_one_sided'], 1 - row['p_one_sided']))
+        # bias-free error: does A follow the pattern (units, seasons) better than B?
+        row['p_one_sided_ubrmse'] = float(np.mean(boot['ubrmse'][:, 0] >= boot['ubrmse'][:, 1]))
         rows.append(row)
     table = pd.DataFrame(rows)
     table.to_csv(os.path.join(out, 'soil_source_comparison.csv'), index=False)
     pd.set_option('display.width', 220)
     cols = ['level', 'source_type', 'n', 'n_units', f'rmse_{la}', f'rmse_{lb}', 'd_rmse', 'd_rmse_lo', 'd_rmse_hi',
-            'p_one_sided', f'r2_{la}', f'r2_{lb}']
+            'p_one_sided', 'p_two_sided', f'bias_{la}', f'bias_{lb}']
+    print(table[cols].round(3).to_string(index=False))
+    cols = ['level', 'source_type', f'ubrmse_{la}', f'ubrmse_{lb}', 'd_ubrmse', 'd_ubrmse_lo', 'd_ubrmse_hi',
+            'p_one_sided_ubrmse', f'r_{la}', f'r_{lb}', 'd_r_lo', 'd_r_hi']
+    print('\nwithout the mean bias (pattern across units and seasons):')
     print(table[cols].round(3).to_string(index=False))
 
     import matplotlib
