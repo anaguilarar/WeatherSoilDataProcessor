@@ -13,6 +13,7 @@ point to for modeladocultivo_cafe.py to show the recommendations.
 Run from the conda env crop_modeling (where Rscript runs CAF):
   conda run -n crop_modeling --no-capture-output python scripts/run_caf_n_optimization.py --geocodes 030106
   conda run -n crop_modeling --no-capture-output python scripts/run_caf_n_optimization.py --workers 6
+  python scripts/run_caf_n_optimization.py --villages-dir Z:/data/vsp_v2 --workers 6   (other machine)
 """
 import argparse
 import concurrent.futures
@@ -82,11 +83,13 @@ def run_optimizer(geocode, config, cultivar='sun'):
 
 
 def run_n_optimization(geocode, config_path=CONFIG, cultivar='sun', output_path=None, work_dir=None,
-                       n_iter=None):
+                       n_iter=None, villages_dir=None):
     """Optimise a village and export one json per texture class; villages already exported are skipped."""
     config = OmegaConf.load(config_path)
     if work_dir is not None:
         config.GENERAL_INFO.working_path = work_dir
+    if villages_dir is not None:
+        config.SPATIAL_INFO.villages_folderpath = villages_dir
     if n_iter is not None:
         config.BAYESIAN.n_iter = n_iter
     output_path = output_path or config.BAYESIAN.get('output_path', f'{CROP}_optimization')
@@ -121,6 +124,9 @@ def main():
     p.add_argument('--limit', type=int, default=0, help='only the first N villages (pilot)')
     p.add_argument('--workers', type=int, default=4, help='villages in parallel (each runs up to 4 CAF cycles)')
     p.add_argument('--n-iter', type=int, default=None, help='overrides BAYESIAN.n_iter')
+    p.add_argument('--villages-dir', default=None,
+                   help='folder with one <GEOCODIGO>/{weather_,soil_,dem_}.zip per village; '
+                        'default: SPATIAL_INFO.villages_folderpath of the configuration')
     p.add_argument('--work-dir', default=os.path.join(tempfile.gettempdir(), 'caf_n_optimization'),
                    help='temporary CAF run folders (outside OneDrive; removed after each village)')
     args = p.parse_args()
@@ -128,6 +134,11 @@ def main():
     os.chdir(REPO)   # the configuration and the CAF parameters use paths relative to the repository
     os.makedirs(args.work_dir, exist_ok=True)
     config = OmegaConf.load(args.config)
+    villages_dir = args.villages_dir or config.SPATIAL_INFO.get('villages_folderpath', '')
+    if not os.path.isdir(villages_dir):
+        # without the village files the code falls back to the national weather/soil/dem files
+        sys.exit(f'village folder not found: {villages_dir!r}; pass --villages-dir or edit '
+                 'SPATIAL_INFO.villages_folderpath in the configuration')
     if args.geocodes:
         roi_names = [str(g) for g in args.geocodes]
     else:
@@ -138,7 +149,8 @@ def main():
         roi_names = roi_names[:args.limit]
     print(CROP, args.cultivar, f'{len(roi_names)} villages')
 
-    jobs = [(g, args.config, args.cultivar, args.output, args.work_dir, args.n_iter) for g in roi_names]
+    jobs = [(g, args.config, args.cultivar, args.output, args.work_dir, args.n_iter, villages_dir)
+            for g in roi_names]
     failed = []
     with tqdm(total=len(jobs)) as pbar:
         with concurrent.futures.ProcessPoolExecutor(max_workers=args.workers, initializer=init_worker) as executor:
