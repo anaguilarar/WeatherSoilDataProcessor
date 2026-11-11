@@ -27,7 +27,10 @@ def cafos_model():
     bin_path = Path(MODULE_PATH).joinpath('crop_modeling/caf/dll')
     if 'windows'in opsys:
         dll_path = bin_path.joinpath('CAF2021_Win.DLL').absolute()
-    else: 
+    elif 'linux' in opsys:
+        # CAF2021.DLL es la compilación de macOS (Mach-O); en Linux R necesita el ELF .so
+        dll_path = bin_path.joinpath('CAF2021.so').absolute()
+    else:
         dll_path = bin_path.joinpath('CAF2021.DLL').absolute()
 
     return str(dll_path)
