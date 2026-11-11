@@ -28,11 +28,14 @@ village_sp_files/
 github_project_plan.md
 testsm.py
 data/maize_area_village_spam2020.csv
+data/coffee_area_village_spam2020.csv
+data/bean_area_village_spam2020.csv
 validation_maize/
 validation_bean/
+validation_coffee/
 validation_deliverables/
-data/bean_area_village_spam2020.csv
 scripts/zamorano_climate_comparison.py
 scripts/zamorano_scenarios.py
 scripts/plot_unfertilised_trials.py
 scripts/caf_nitrogen_optimization.py
+scripts/validate_coffee.py
