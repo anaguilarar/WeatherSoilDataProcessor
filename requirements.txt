@@ -23,3 +23,4 @@ widgetsnbextension
 xarray
 numba
 bayesian-optimization==2.0.3
+pyquefts @ git+https://github.com/anaguilarar/PyQuefts.git

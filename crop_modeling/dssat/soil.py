@@ -7,11 +7,22 @@ from typing import List
 from ._base import section_indices
 from .files_reading import delimitate_header_indices
 from ..utils.u_soil import find_soil_textural_class, calculate_sks, slu1
-from DSSATTools.soil import SoilProfile, SoilLayer
+from DSSATTools.soil import SoilProfile, SoilLayer, SCD_LVL_PARS
+from DSSATTools.base.formater import soil_line_write
 
 
 REQUIRED_LAYER_PARS = ("SLLL", "SDUL", "SBDM", "SLCL", "SLSI")
-MAX_SOIL_DEPTH = None  
+MAX_SOIL_DEPTH = None
+# The DSSAT P model only initialises soil P from some extraction methods (Olsen SA001, Bray 1 SA002; Mehlich 3
+# SA013 stops with error SPINIT), so the Mehlich-3 P of the soil data is written as Olsen P.
+SOIL_P_METHOD = 'SA001'
+# second soil tier (@  SLB  SLPX ... SLCA), DSSAT column widths
+SCD_LVL_FMT = ['I5'] + ['F5.1'] * 10 + ['F5.2'] + ['F5.1'] * 5
+
+
+def mehlich3_to_olsen(p):
+    """Olsen P (mg/kg) from Mehlich-3 P (mg/kg), McDowell et al. 2023 (same conversion as PyQUEFTS)."""
+    return 0.47 * p + 2.4
 
 class DSSATSoil_base():
     """
@@ -125,13 +136,15 @@ class DSSATSoil_base():
         """
         lines = DSSATSoil_base.open_file(path)
         section_ids = list(section_indices(lines))
-        lastsection = section_ids[-1]
-        # the soil table is in the last section
+        # the soil layer table is the section with SLLL; a second layer tier (@  SLB  SLPX ...) can follow it
+        lastsection = next((i for i in section_ids if 'SLLL' in lines[i].split()), section_ids[-1])
         section_header_str = lines[lastsection]
         header_indices = delimitate_header_indices(section_header_str)
-        
+
         data_rows = []
         for section_data_str in lines[(lastsection+1):len(lines)]:
+            if section_data_str.strip().startswith(('@', '*')):
+                break
             data_rows.append([section_data_str[i:j].strip()
                         for i, j in header_indices])
         
@@ -292,6 +305,13 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
                         
                     dict_dssat[kdssat]  = val
 
+            # nutrients for the DSSAT P model (used only with PHOSP Y): p is Mehlich-3 P (mg/kg), k is
+            # exchangeable K (cmol/kg); negative values are nodata
+            if 'p' in colnames and np.isfinite(df['p'].values[row]) and df['p'].values[row] >= 0:
+                dict_dssat['SLPX'] = mehlich3_to_olsen(float(df['p'].values[row]))
+            if 'k' in colnames and np.isfinite(df['k'].values[row]) and df['k'].values[row] >= 0:
+                dict_dssat['SLKE'] = float(df['k'].values[row])
+
             dict_dssat['SSKS'] = calculate_sks(
                             silt = dict_dssat['SLSI'], 
                             clay = dict_dssat['SLCL'], 
@@ -345,7 +365,21 @@ class DSSATSoil_fromSOILGRIDS(SoilProfile):
         listvals = listvals[:nkeep]
         for d, v in listvals:
             self.add_layer(SoilLayer(d, v))
+        if any(v.get('SLPX') is not None for _, v in listvals):
+            self.SMPX = SOIL_P_METHOD
         return listvals
+
+    def __repr__(self):
+        """DSSATTools profile plus the second soil tier (SLPX ... SLCA) when there are nutrient data;
+        DSSATTools only writes the first tier."""
+        rep = super().__repr__()
+        layers = list(self.layers.items())
+        if not any(pd.notna(layer[par]) for _, layer in layers for par in SCD_LVL_PARS):
+            return rep
+        rep += '@  SLB' + ''.join(f'{par:>6}' for par in SCD_LVL_PARS) + '\n'
+        for depth, layer in layers:
+            rep += soil_line_write([depth] + list(layer[SCD_LVL_PARS]), SCD_LVL_FMT) + '\n'
+        return rep
             
     def soil_general_soilline_parameters(self):
         """

@@ -31,6 +31,13 @@ SECTION_NAMES = {
     '@  AUTOMATIC MANAGEMENT': '@N'
 }
 
+# Crops whose DSSAT P model can be used (PHOSP Y). The dry bean species file only has placeholder P
+# parameters, so bean P is left to QUEFTS. DSSAT has no K model for these crops (POTAS is always N).
+PHOSPHORUS_CROPS = ('MZ',)
+# FE001 (ammonium nitrate) carries no P in DSSAT, so with PHOSP Y applications with P use an NPK material
+FERTILIZER_MATERIAL = 'FE001'
+FERTILIZER_MATERIAL_NPK = 'FE027'   # NPK - ammonium nitrate
+
 
 class Management_FileModifier(DSSATFileModifier):
     """A class to modify DSSAT management files with various planting and treatment options.
@@ -333,6 +340,8 @@ class Management_FileModifier(DSSATFileModifier):
         crop = kwargs.get('crop',None)
         # NITRO: 'Y' simulates the soil N balance (N stress), 'N' turns it off (no N stress)
         nitro = kwargs.get('nitro', None) or 'Y'
+        # PHOSP: 'Y' simulates the soil P balance (P stress, needs soil P in the .SOL file), 'N' no P stress
+        phosp = kwargs.get('phosp', None) or 'N'
         newsection = []
         for i in range(self.n_windows):
             simulation_list = []
@@ -348,7 +357,9 @@ class Management_FileModifier(DSSATFileModifier):
             if crop is not None and crop.lower() != 'cassava':
                 #if ferttype == 'R': orig_df[1].loc[:,'NITRO'] = 'Y'
                 orig_df[1].loc[:,'NITRO'] = nitro
-            orig_df[2].loc[:,'PHOTO'] = 'C' 
+            orig_df[1].loc[:,'PHOSP'] = phosp
+            orig_df[1].loc[:,'POTAS'] = 'N'
+            orig_df[2].loc[:,'PHOTO'] = 'C'
             orig_df[2].loc[:,'NSWIT'] = '1'
             orig_df[2].loc[:,'MESOM'] = 'G'
             orig_df[2].loc[:,'MESEV'] = 'S'
@@ -412,9 +423,11 @@ class Management_FileModifier(DSSATFileModifier):
         list of list of str or None
             Modified fertilizer lines or None if no applications specified.
         """
+        phosp = getattr(self, 'phosphorus_simulation', None) == 'Y'
+
         def table_mod(df, fid, fdate, nval, pval, kval, fname):
             df.loc[:, '@F'] = fid
-            df.loc[:, 'FMCD'] = 'FE001'
+            df.loc[:, 'FMCD'] = FERTILIZER_MATERIAL_NPK if phosp and pval not in (-99, 0) else FERTILIZER_MATERIAL
             df.loc[:, 'FACD'] = 'AP001'
             df.loc[:, 'FDATE'] = '00001' if fdate is None else fdate.strftime('%y%j')
             df.loc[:, 'FAMN'] = 0 if nval == -99 else nval
@@ -624,6 +637,7 @@ class DSSATManagement_base(Management_FileModifier):
         self.fertilizer = kwargs.get('fertilizer_schedule',None)
         self.index_soilwat = kwargs.get('index_soilwat',1)
         self.nitrogen_simulation = kwargs.get('nitrogen_simulation', None)
+        self.phosphorus_simulation = str(kwargs.get('phosphorus_simulation', None) or 'N').upper()
         self._long = kwargs.get('long',None)
         self._lat = kwargs.get('lat',None)
         
@@ -717,7 +731,8 @@ class DSSATManagement_base(Management_FileModifier):
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         simul_listlines = self.simulation_control_modifier(sname = f'{self.crop}_{nyears}', nyears = nyears, fertilizer = ferti, crop = self.crop, harvest = harvest_schedule,
                                                         simulation_cropmodel = config_management.MANAGEMENT.get('simulation_cropmodel', -99),
-                                                        nitro = self.nitrogen_simulation)
+                                                        nitro = self.nitrogen_simulation,
+                                                        phosp = self.phosphorus_simulation)
         # Simulation control # Currently Irrigation is deactivated, Symbiosis is Yes
         autman_listlines = self.automatic_management_modifier()
         
@@ -796,6 +811,7 @@ class DSSATManagement_base(Management_FileModifier):
                 'harvestDate':  self.harvesting_date.strftime('%Y-%m-%d') if self.harvesting_date else None,
                 'fertilizer_dates_after_planting': np.array(self.fertilizer['days_after_planting']).tolist() if self.fertilizer['days_after_planting'] is not None else None,
                 'fertilizer_npk': np.array(self.fertilizer['npk']).tolist() if self.fertilizer['npk'] is not None else None,
+                'phosphorus_simulation': self.phosphorus_simulation,
                 'simulation_cropmodel': CROPS_MODULES[self.crop.title()]
             },
             'SOIL':{
@@ -831,6 +847,20 @@ class DSSATManagement_base(Management_FileModifier):
             listfert.append(tuple(tmplist))
         self.fertilizer['npk'] = listfert
         
+    def _check_phosphorus_simulation(self):
+        'PHOSP Y only for crops with a usable DSSAT P model and a soil file with soil P (else DSSAT stops, error SPINIT)'
+        if self.phosphorus_simulation != 'Y':
+            return
+        if self.crop_code not in PHOSPHORUS_CROPS:
+            print(f'phosphorus_simulation Y is not available for {self.crop} (DSSAT P parameters), '
+                  'running with PHOSP N')
+            self.phosphorus_simulation = 'N'
+            return
+        with open(self._soil[0]) as f:
+            if 'SLPX' not in f.read():
+                print(f'{self._soil[0]} has no soil P (SLPX), running with PHOSP N')
+                self.phosphorus_simulation = 'N'
+
     def _write_configuration_file(self, filex_template, **kwargs):
         try:
             self.check_files(filex_template)
@@ -842,6 +872,7 @@ class DSSATManagement_base(Management_FileModifier):
         number_years = self.total_climate_years()
         soilid, soildata = self.soil_data()
         self.general_info(**kwargs)
+        self._check_phosphorus_simulation()
         weather_fn = self.check_weather_fn()
         self._check_fertlizers_length()
         

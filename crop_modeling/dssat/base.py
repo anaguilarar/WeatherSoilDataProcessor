@@ -183,7 +183,8 @@ class DSSATBase(ModelBase):
         fertilizer_schedule:Optional[List] = None,
         verbose: bool = True,
         sowing_date_information: dict = None,
-        nitrogen_simulation: Optional[str] = None
+        nitrogen_simulation: Optional[str] = None,
+        phosphorus_simulation: Optional[str] = None
         ) -> None:
         """
         Set up the management configuration and create DSSAT experiment files.
@@ -212,6 +213,9 @@ class DSSATBase(ModelBase):
             Print where the configuration files were saved
         nitrogen_simulation: str, optional
             NITRO simulation option: 'Y' (default) simulates the soil N balance, 'N' runs without N stress.
+        phosphorus_simulation: str, optional
+            PHOSP simulation option: 'Y' simulates the soil P balance (maize only, needs soil P in the soil file),
+            'N' (default) runs without P stress.
         """
         #if len(self._process_paths) == 0: self.find_envworking_paths()
         assert len(self._process_paths) > 0, "Soil and weather data must be obtained first."
@@ -234,7 +238,8 @@ class DSSATBase(ModelBase):
 
             output = dssatm.create_file(template, pathiprocess, roi_id = roi_id,plantingWindow = plantingWindow,
                     index_soilwat = index_soilwat, fertilizer_schedule =fertilizer_schedule,
-                    long = long, lat = lat, verbose = verbose, nitrogen_simulation = nitrogen_simulation)
+                    long = long, lat = lat, verbose = verbose, nitrogen_simulation = nitrogen_simulation,
+                    phosphorus_simulation = phosphorus_simulation)
             self.crop_code = dssatm.crop_code
             if output is None:
                 continue
